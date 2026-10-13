@@ -1,0 +1,4136 @@
+Structure of Front :
+
+src/
+    app/
+        account/
+            orders/
+                [id]/
+                    page.js
+            page.js
+            layout.js
+        blog/
+            [slug]/
+                page.js
+            page.js
+        cart/
+            page.js
+        category/
+            [slug]/
+                page.js
+        checkout/
+            callback/
+                page.js
+            page.js
+        login/
+            page.js
+        products/
+            [id]/
+                page.js
+            page.js
+        global.css
+        layout.js
+        not-found.js
+        page.js
+        robots.js
+        sitemap.js
+    components/
+        blog/
+            ArticleContent.js
+            BlogCard.js
+            ShareButtons.js
+        cart/
+            CartItem.js
+        common/
+            Breadcrumbs.js
+            Pagination.js
+            StarRating.js
+        layout/
+            Footer.js
+            Header.js
+            MegaMenu.js
+            MobileMenu.js
+        product/
+            ActiveFilter.js
+            AddToCartBox.js
+            FilterSideBar.js
+            ProductCard.js
+            ProductGallery.js
+            ProductSpecs.js
+            ProductToolbar.js
+            RelatedProducts.js
+            ReviewsSection.js
+    contexts/
+        AuthContext.js
+        CartContext.js
+    lib/
+        api.js
+        buildProductQuery.js
+        Categories.js
+        format.js
+        seo.js
+.env.local.example
+jsconfig.json
+next.config.mjs
+package-lock.json
+package.json
+postcss.config.mjs
+README.md
+
+
+---------------------------------
+src/app/account/orders/[id]/page.js :
+
+'use client';
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import { api } from '@/lib/api';
+import { formatPrice, formatDate } from '@/lib/format';
+
+const STATUS_LABELS = {
+  pending: 'در انتظار پرداخت',
+  processing: 'در حال پردازش',
+  shipped: 'ارسال شده',
+  delivered: 'تحویل شده',
+  cancelled: 'لغو شده',
+};
+
+export default function MyOrderDetailPage() {
+  const { id } = useParams();
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getMyOrder(id)
+      .then(data => setOrder(data.order))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) return <div className="text-ash animate-pulse">در حال بارگذاری...</div>;
+  if (!order) return <div className="text-ember">سفارش یافت نشد</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <Link href="/account/orders" className="text-ash hover:text-ink transition">→</Link>
+        <h1 className="text-lg font-bold text-ink font-mono" dir="ltr">{order.code}</h1>
+      </div>
+
+      {/* مسیر وضعیت سفارش */}
+      {order.statusHistory?.length > 0 && (
+        <div className="bg-panel border border-line rounded-card p-5">
+          <h2 className="font-bold text-ink text-sm mb-4">وضعیت سفارش</h2>
+          <div className="space-y-3">
+            {order.statusHistory.map((h, i) => (
+              <div key={i} className="flex items-center gap-3 text-sm">
+                <span className="w-2 h-2 rounded-full bg-grape shrink-0" />
+                <span className="text-ink">{STATUS_LABELS[h.status] || h.status}</span>
+                <span className="text-ash-dark text-xs mr-auto">{formatDate(h.date || h.createdAt)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* اقلام سفارش */}
+      <div className="bg-panel border border-line rounded-card p-5">
+        <h2 className="font-bold text-ink text-sm mb-4">اقلام سفارش</h2>
+        <div className="space-y-3">
+          {order.items?.map((item, i) => (
+            <div key={i} className="flex justify-between text-sm">
+              <span className="text-ash">{item.name || item.product?.name} × {item.quantity?.toLocaleString('fa-IR')}</span>
+              <span className="text-ink font-mono">{formatPrice((item.price || 0) * item.quantity)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-line mt-4 pt-4 space-y-1.5">
+          <Row label="جمع کالاها" value={formatPrice(order.subtotal)} />
+          <Row label="هزینه ارسال" value={formatPrice(order.shippingCost)} />
+          {order.discount > 0 && <Row label="تخفیف" value={`- ${formatPrice(order.discount)}`} />}
+          <Row label="مبلغ نهایی" value={formatPrice(order.total)} bold />
+        </div>
+      </div>
+
+      {/* آدرس گیرنده */}
+      {order.shippingInfo && (
+        <div className="bg-panel border border-line rounded-card p-5">
+          <h2 className="font-bold text-ink text-sm mb-3">آدرس گیرنده</h2>
+          <p className="text-sm text-ash leading-7">
+            {order.shippingInfo.name} — <span dir="ltr">{order.shippingInfo.phone}</span><br />
+            {order.shippingInfo.city}، {order.shippingInfo.address}<br />
+            کد پستی: <span dir="ltr">{order.shippingInfo.postalCode}</span>
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value, bold }) {
+  return (
+    <div className={`flex justify-between text-sm ${bold ? 'text-ink font-bold pt-2 border-t border-line' : 'text-ash'}`}>
+      <span>{label}</span>
+      <span className="font-mono">{value}</span>
+    </div>
+  );
+}
+---------------------------------
+src/app/account/orders/page.js :
+
+'use client';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { api } from '@/lib/api';
+import { formatPrice, formatDateShort } from '@/lib/format';
+
+const STATUS_LABELS = {
+  pending: { text: 'در انتظار پرداخت', color: 'text-ember bg-ember/10' },
+  processing: { text: 'در حال پردازش', color: 'text-lagoon bg-lagoon/10' },
+  shipped: { text: 'ارسال شده', color: 'text-grape-light bg-grape/10' },
+  delivered: { text: 'تحویل شده', color: 'text-leaf bg-leaf/10' },
+  cancelled: { text: 'لغو شده', color: 'text-ash-dark bg-ash/10' },
+};
+
+export default function MyOrdersPage() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getMyOrders()
+      .then(data => setOrders(data.orders || []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="text-ash animate-pulse">در حال بارگذاری...</div>;
+
+  if (orders.length === 0) {
+    return (
+      <div className="bg-panel border border-line rounded-card p-10 text-center">
+        <div className="text-4xl mb-3">📦</div>
+        <p className="text-ink font-bold mb-1">هنوز سفارشی ثبت نکردید</p>
+        <Link href="/products" className="text-grape-light text-sm hover:underline">مشاهده محصولات</Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <h1 className="text-lg font-bold text-ink mb-4">سفارش‌های من</h1>
+      {orders.map(order => (
+        <Link
+          key={order.id}
+          href={`/account/orders/${order.id}`}
+          className="flex items-center justify-between bg-panel border border-line rounded-card p-4 hover:border-grape/50 transition"
+        >
+          <div>
+            <div className="text-sm text-ink font-bold font-mono" dir="ltr">{order.code}</div>
+            <div className="text-xs text-ash-dark mt-1">{formatDateShort(order.createdAt)}</div>
+          </div>
+          <div className="text-left">
+            <div className="text-sm text-ink font-mono">{formatPrice(order.total)}</div>
+            <span className={`text-xs px-2 py-0.5 rounded ${STATUS_LABELS[order.status]?.color || ''}`}>
+              {STATUS_LABELS[order.status]?.text || order.status}
+            </span>
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+---------------------------------
+src/app/account/layout.js :
+
+'use client';
+import { useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
+
+// نگهبان بخش حساب کاربری — اگه لاگین نبود میفرسته به /login
+export default function AccountLayout({ children }) {
+  const { user, loading, logout } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!loading && !user) router.push('/login');
+  }, [loading, user, router]);
+
+  if (loading || !user) return <div className="text-center py-24 text-ash">در حال بارگذاری...</div>;
+
+  const links = [
+    { href: '/account', label: 'پروفایل من', icon: '👤' },
+    { href: '/account/orders', label: 'سفارش‌های من', icon: '📦' },
+  ];
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
+      <div className="flex flex-col md:flex-row gap-6">
+        <aside className="md:w-56 shrink-0">
+          <div className="bg-panel border border-line rounded-card p-3 space-y-1">
+            {links.map(link => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-btn text-sm transition ${
+                  pathname === link.href ? 'bg-grape text-white' : 'text-ash hover:text-ink hover:bg-card'
+                }`}
+              >
+                <span>{link.icon}</span> {link.label}
+              </Link>
+            ))}
+            <button
+              onClick={() => { logout(); router.push('/'); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-btn text-sm text-ember hover:bg-ember/10 transition"
+            >
+              🚪 خروج از حساب
+            </button>
+          </div>
+        </aside>
+        <div className="flex-1 min-w-0">{children}</div>
+      </div>
+    </div>
+  );
+}
+---------------------------------
+src/app/account/page.js :
+
+'use client';
+import { useAuth } from '@/contexts/AuthContext';
+
+export default function AccountPage() {
+  const { user } = useAuth();
+
+  return (
+    <div className="bg-panel border border-line rounded-card p-6">
+      <h1 className="text-lg font-bold text-ink mb-6">پروفایل من</h1>
+      <div className="space-y-4">
+        <Field label="نام و نام خانوادگی" value={user?.name || '—'} />
+        <Field label="شماره موبایل" value={user?.phone} dir="ltr" />
+      </div>
+      <p className="text-xs text-ash-dark mt-6">
+        ویرایش اطلاعات پروفایل فعلاً پشتیبانی نمیشه. برای تغییر اطلاعات با پشتیبانی تماس بگیرید.
+      </p>
+    </div>
+  );
+}
+
+function Field({ label, value, dir }) {
+  return (
+    <div>
+      <p className="text-xs text-ash mb-1">{label}</p>
+      <p className="text-ink" dir={dir}>{value}</p>
+    </div>
+  );
+}
+---------------------------------
+src/app/blog/[slug]/page.js :
+
+import { notFound } from 'next/navigation';
+import Link from 'next/link';
+import { api } from '@/lib/api';
+import { buildArticleJsonLd, buildBreadcrumbJsonLd } from '@/lib/seo';
+import { formatDate } from '@/lib/format';
+import Breadcrumbs from '@/components/common/Breadcrumbs';
+import ArticleContent, { extractHeadings } from '@/components/blog/ArticleContent';
+import ShareButtons from '@/components/blog/ShareButtons';
+import BlogCard from '@/components/blog/BlogCard';
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://technubela.example.com';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
+
+// ============================================================
+// صفحه‌ی مقاله — طبق خواسته‌ی شما، سئوش با دقت کامل رعایت شده:
+// - متادیتای کامل + canonical + Open Graph نوع "article"
+// - JSON-LD از نوع Article (نویسنده، تاریخ انتشار/ویرایش، تصویر)
+// - JSON-LD Breadcrumb
+// - ساختار semantic (h1 برای عنوان، h2 برای زیرعنوان‌ها)
+// - فهرست مطالب لینک‌دار (کمک به دسترسی‌پذیری و dwell time)
+// - لینک‌دهی داخلی به مقالات مرتبط و محصولات دسته‌ی مرتبط
+// ============================================================
+
+async function getPostSafe(slug) {
+  try {
+    const data = await api.getBlogPost(slug);
+    return data.post;
+  } catch {
+    return null;
+  }
+}
+
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const post = await getPostSafe(slug);
+  if (!post) return {};
+
+  const image = post.image ? `${SITE_URL}${post.image}` : undefined;
+
+  return {
+    title: post.title,
+    description: post.excerpt,
+    alternates: { canonical: `/blog/${post.slug}` },
+    openGraph: {
+      type: 'article',
+      title: post.title,
+      description: post.excerpt,
+      images: image ? [image] : [],
+      publishedTime: post.date,
+      modifiedTime: post.updatedDate || post.date,
+      authors: [post.author?.name].filter(Boolean),
+    },
+    twitter: { card: 'summary_large_image', title: post.title, description: post.excerpt },
+  };
+}
+
+export default async function BlogPostPage({ params }) {
+  const { slug } = await params;
+  const post = await getPostSafe(slug);
+  if (!post) notFound();
+
+  const relatedData = await api.getBlogPosts(`?category=${encodeURIComponent(post.category)}&limit=4`).catch(() => ({ posts: [] }));
+  const related = (relatedData.posts || []).filter(p => p.slug !== post.slug).slice(0, 3);
+
+  const headings = extractHeadings(post.content);
+  const articleJsonLd = buildArticleJsonLd(post, SITE_URL);
+  const breadcrumbItems = [
+    { name: 'خانه', href: '/' },
+    { name: 'مجله', href: '/blog' },
+    { name: post.title, href: `/blog/${post.slug}` },
+  ];
+  const breadcrumbJsonLd = buildBreadcrumbJsonLd(breadcrumbItems, SITE_URL);
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
+      {/* eslint-disable-next-line react/no-danger */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }} />
+      {/* eslint-disable-next-line react/no-danger */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
+
+      <div className="mb-4">
+        <Breadcrumbs items={breadcrumbItems} />
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-8">
+        <article className="flex-1 min-w-0 max-w-3xl">
+          <span className="text-xs text-lagoon">{post.category}</span>
+          <h1 className="text-2xl md:text-3xl font-bold text-ink mt-2 mb-4 leading-10">{post.title}</h1>
+
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-9 h-9 rounded-full bg-grape flex items-center justify-center text-white text-sm font-bold shrink-0">
+              {post.author?.avatar || 'ت'}
+            </div>
+            <div>
+              <p className="text-sm text-ink">{post.author?.name}</p>
+              <p className="text-xs text-ash-dark">{post.author?.role} · {formatDate(post.date)} · {post.readTime?.toLocaleString('fa-IR')} دقیقه مطالعه</p>
+            </div>
+          </div>
+
+          {post.image && (
+            <img src={`${API_BASE}${post.image}`} alt={post.title} className="w-full aspect-video object-cover rounded-card mb-6" />
+          )}
+
+          <p className="text-ash text-base leading-8 mb-6 border-r-2 border-grape pr-4">{post.excerpt}</p>
+
+          <ArticleContent blocks={post.content} />
+
+          {post.tags?.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-8 pt-6 border-t border-line">
+              {post.tags.map((tag , i) => (
+                <span key={i} className="text-xs bg-card text-ash px-3 py-1.5 rounded-full">#{tag}</span>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-6 pt-6 border-t border-line">
+            <ShareButtons url={`${SITE_URL}/blog/${post.slug}`} title={post.title} />
+          </div>
+        </article>
+
+        {/* فهرست مطالب — فقط دسکتاپ */}
+        {headings.length > 0 && (
+          <aside className="hidden lg:block w-56 shrink-0">
+            <div className="sticky top-24 bg-panel border border-line rounded-card p-4">
+              <h2 className="text-xs font-bold text-ink mb-3">فهرست مطالب</h2>
+              <ul className="space-y-2">
+                {headings.map(h => (
+                  <li key={h.id}>
+                    <a href={`#${h.id}`} className="text-xs text-ash hover:text-ink transition line-clamp-2">{h.text}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </aside>
+        )}
+      </div>
+
+      {related.length > 0 && (
+        <section className="mt-12 max-w-3xl">
+          <h2 className="text-lg font-bold text-ink mb-4">مقالات مرتبط</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {related.map(p => <BlogCard key={p.id} post={p} />)}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+---------------------------------
+src/app/blog/page.js :
+
+import Link from 'next/link';
+import { api } from '@/lib/api';
+import BlogCard from '@/components/blog/BlogCard';
+import Pagination from '@/components/common/Pagination';
+import Breadcrumbs from '@/components/common/Breadcrumbs';
+
+// ============================================================
+// صفحه‌ی وبلاگ — دومین اولویت سئوی این پروژه بعد از صفحه‌ی محصول.
+// Server Component، متادیتای کامل، و لینک‌دهی داخلی به مقالات.
+// ============================================================
+
+export const metadata = {
+  title: 'مجله تک‌نبولا | آموزش، مقایسه و راهنمای خرید قطعات کامپیوتر',
+  description: 'جدیدترین مقالات آموزشی، مقایسه‌ی محصولات، و راهنمای خرید قطعات کامپیوتر و گجت از تیم تحریریه‌ی تک‌نبولا.',
+  alternates: { canonical: '/blog' },
+};
+
+export default async function BlogPage({ searchParams }) {
+  const sp = await searchParams;
+  const page = Number(sp.page) || 1;
+  const params = new URLSearchParams({ page: String(page), limit: '9' });
+  if (sp.category) params.set('category', sp.category);
+
+  const data = await api.getBlogPosts(`?${params.toString()}`).catch(() => ({ posts: [], total: 0, totalPages: 1 }));
+  const posts = data.posts || [];
+  const totalPages = data.totalPages || 1;
+
+  // لیست دسته‌بندی‌های مقالات از خود پست‌های همین صفحه استخراج میشه
+  // (چون بک‌اند مدل جدای category برای بلاگ نداره، دقیقاً مثل محصولات)
+  const categories = [...new Set(posts.map(p => p.category))];
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
+      <div className="mb-4">
+        <Breadcrumbs items={[{ name: 'خانه', href: '/' }, { name: 'مجله', href: '/blog' }]} />
+      </div>
+
+      <h1 className="text-2xl font-bold text-ink mb-2">مجله تک‌نبولا</h1>
+      <p className="text-ash text-sm mb-6">آموزش، مقایسه و راهنمای خرید — نوشته‌شده توسط کارشناسان سخت‌افزار</p>
+
+      {categories.length > 0 && (
+        <div className="flex gap-2 flex-wrap mb-6">
+          <Link href="/blog" className={`text-xs px-3 py-1.5 rounded-full transition ${!sp.category ? 'bg-grape text-white' : 'bg-panel text-ash hover:text-ink'}`}>
+            همه
+          </Link>
+          {categories.map(cat => (
+            <Link
+              key={cat}
+              href={`/blog?category=${encodeURIComponent(cat)}`}
+              className={`text-xs px-3 py-1.5 rounded-full transition ${sp.category === cat ? 'bg-grape text-white' : 'bg-panel text-ash hover:text-ink'}`}
+            >
+              {cat}
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {posts.length === 0 ? (
+        <p className="text-ash text-sm py-10 text-center">مقاله‌ای پیدا نشد.</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {posts.map(post => <BlogCard key={post.id} post={post} />)}
+        </div>
+      )}
+
+      <Pagination page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+---------------------------------
+src/app/cart/page.js :
+
+'use client';
+import Link from 'next/link';
+import { useCart } from '@/contexts/CartContext';
+import CartItem from '@/components/cart/CartItem';
+import { formatPrice } from '@/lib/format';
+
+export default function CartPage() {
+  const { items, subtotal, hydrated } = useCart();
+
+  // قبل از هیدریت شدن از localStorage چیزی نشون نده تا از جابه‌جایی محتوا (layout shift) جلوگیری بشه
+  if (!hydrated) return null;
+
+  if (items.length === 0) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-20 text-center">
+        <div className="text-6xl mb-4">🛒</div>
+        <h1 className="text-ink font-bold text-lg mb-2">سبد خرید شما خالیه</h1>
+        <p className="text-ash text-sm mb-6">هنوز محصولی به سبدتون اضافه نکردید.</p>
+        <Link href="/products" className="bg-grape hover:bg-grape/80 text-white font-bold px-6 py-3 rounded-btn transition inline-block">
+          مشاهده محصولات
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
+      <h1 className="text-xl font-bold text-ink mb-6">سبد خرید ({items.length.toLocaleString('fa-IR')} کالا)</h1>
+
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex-1 space-y-3">
+          {items.map(item => <CartItem key={item.productId} item={item} />)}
+        </div>
+
+        <div className="lg:w-80 shrink-0">
+          <div className="bg-panel border border-line rounded-card p-5 lg:sticky lg:top-24">
+            <h2 className="font-bold text-ink mb-4">خلاصه سفارش</h2>
+            <div className="flex justify-between text-sm text-ash mb-2">
+              <span>جمع کالاها</span>
+              <span className="font-mono">{formatPrice(subtotal)}</span>
+            </div>
+            <p className="text-xs text-ash-dark mb-4">هزینه‌ی ارسال در مرحله‌ی بعد محاسبه میشه.</p>
+            <Link
+              href="/checkout"
+              className="w-full block text-center bg-grape hover:bg-grape/80 text-white font-bold py-3 rounded-btn transition"
+            >
+              ادامه‌ی خرید
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+---------------------------------
+src/app/category/[slug]/page.js :
+
+import { Suspense } from 'react';
+import { notFound } from 'next/navigation';
+import { api } from '@/lib/api';
+import { buildProductQuery } from '@/lib/buildProductQuery';
+import { ALL_CATEGORIES, categoryLabel } from '@/lib/categories';
+import ProductCard from '@/components/product/ProductCard';
+import FilterSidebar from '@/components/product/FilterSidebar';
+import ProductToolbar from '@/components/product/ProductToolbar';
+import ActiveFilters from '@/components/product/ActiveFilters';
+import Pagination from '@/components/common/Pagination';
+import Breadcrumbs from '@/components/common/Breadcrumbs';
+
+// ============================================================
+// صفحه‌ی دسته‌بندی — مثلاً /category/gpu
+// ------------------------------------------------------------
+// چون تعداد دسته‌ها ثابت و کمه (لیست توی lib/categories.js)،
+// با generateStaticParams صفحاتش از قبل توی build ساخته میشن
+// (سریع‌تر + بهتر برای سئو نسبت به رندر کاملاً داینامیک).
+// ============================================================
+
+export async function generateStaticParams() {
+  return ALL_CATEGORIES.map(c => ({ slug: c.slug }));
+}
+
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const category = ALL_CATEGORIES.find(c => c.slug === slug);
+  if (!category) return {};
+
+  return {
+    title: `خرید ${category.label} | قیمت روز و مشخصات فنی`,
+    description: `بهترین قیمت خرید ${category.label} با گارانتی اصالت و ارسال سریع. مقایسه و فیلتر بر اساس برند و قیمت در فروشگاه تک‌نبولا.`,
+    alternates: { canonical: `/category/${slug}` },
+  };
+}
+
+export default async function CategoryPage({ params, searchParams }) {
+  const { slug } = await params;
+  const sp = await searchParams;
+
+  const category = ALL_CATEGORIES.find(c => c.slug === slug);
+  if (!category) notFound();
+
+  const query = buildProductQuery(sp, { category: slug });
+  const [productsData, facetsData] = await Promise.allSettled([
+    api.getProducts(query),
+    api.getProductFacets(`?category=${slug}`),
+  ]);
+
+  const products = productsData.status === 'fulfilled' ? (productsData.value.products || []) : [];
+  const total = productsData.status === 'fulfilled' ? (productsData.value.total ?? products.length) : 0;
+  const totalPages = productsData.status === 'fulfilled' ? (productsData.value.totalPages ?? 1) : 1;
+  const facets = facetsData.status === 'fulfilled' ? facetsData.value : { brands: [] };
+  const page = Number(sp.page) || 1;
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 md:px-6 py-6">
+      <div className="mb-4">
+        <Breadcrumbs items={[{ name: 'خانه', href: '/' }, { name: category.label, href: `/category/${slug}` }]} />
+      </div>
+
+      <div className="flex items-center gap-3 mb-6">
+        <span className="text-3xl">{category.icon}</span>
+        <h1 className="text-xl md:text-2xl font-bold text-ink">{category.label}</h1>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="hidden lg:block">
+          <Suspense fallback={null}>
+            <FilterSidebar facets={facets} lockedCategory={slug} />
+          </Suspense>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <Suspense fallback={null}>
+            <ProductToolbar total={total} facets={facets} lockedCategory={slug} />
+            <ActiveFilters lockedCategory={slug} />
+          </Suspense>
+
+          {products.length === 0 ? (
+            <div className="text-center py-20 bg-panel border border-line rounded-card">
+              <div className="text-5xl mb-4">{category.icon}</div>
+              <p className="text-ink font-bold mb-1">فعلاً محصولی توی این دسته‌بندی نیست</p>
+              <p className="text-sm text-ash">به‌زودی محصولات جدید اضافه میشه.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+              {products.map(p => <ProductCard key={p.id} product={p} />)}
+            </div>
+          )}
+
+          <Suspense fallback={null}>
+            <Pagination page={page} totalPages={totalPages} />
+          </Suspense>
+        </div>
+      </div>
+    </div>
+  );
+}
+---------------------------------
+src/app/checkout/callback/page.js :
+
+'use client';
+// ============================================================
+// صفحه‌ی بازگشت از درگاه پرداخت
+// ------------------------------------------------------------
+// زرین‌پال کاربر رو به این آدرس با کوئری‌پارام‌های Authority و
+// Status برمی‌گردونه (دقیقاً همین اسم‌ها، با حرف بزرگ — استاندارد
+// خود زرین‌پاله). orderId رو هم خودمون موقع ساخت لینک پرداخت
+// (callback_url) بهش اضافه کرده بودیم تا بفهمیم این پرداخت مال
+// کدوم سفارشه.
+// ============================================================
+
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { api } from '@/lib/api';
+import { formatPrice } from '@/lib/format';
+
+function CallbackContent() {
+  const searchParams = useSearchParams();
+  const [status, setStatus] = useState('loading'); // loading | success | failed
+  const [order, setOrder] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const orderId = searchParams.get('orderId');
+    const authority = searchParams.get('Authority');
+    const payStatus = searchParams.get('Status'); // 'OK' یا 'NOK'
+
+    if (!orderId || !authority) {
+      setStatus('failed');
+      setError('اطلاعات پرداخت ناقصه.');
+      return;
+    }
+
+    api.verifyPayment(orderId, authority, payStatus)
+      .then(data => { setOrder(data.order); setStatus('success'); })
+      .catch(err => { setError(err.message); setStatus('failed'); });
+  }, [searchParams]);
+
+  if (status === 'loading') {
+    return (
+      <div className="text-center py-24">
+        <div className="animate-pulse text-4xl mb-4">⏳</div>
+        <p className="text-ash">در حال بررسی نتیجه‌ی پرداخت...</p>
+      </div>
+    );
+  }
+
+  if (status === 'failed') {
+    return (
+      <div className="text-center py-24 max-w-md mx-auto">
+        <div className="text-5xl mb-4">❌</div>
+        <h1 className="text-ink font-bold text-lg mb-2">پرداخت ناموفق بود</h1>
+        <p className="text-ash text-sm mb-6">{error || 'مبلغ کسر نشد. می‌تونید دوباره تلاش کنید.'}</p>
+        <Link href="/cart" className="bg-grape hover:bg-grape/80 text-white font-bold px-6 py-3 rounded-btn transition inline-block">
+          بازگشت به سبد خرید
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-center py-24 max-w-md mx-auto">
+      <div className="text-5xl mb-4">✅</div>
+      <h1 className="text-ink font-bold text-lg mb-2">پرداخت با موفقیت انجام شد</h1>
+      {order && (
+        <p className="text-ash text-sm mb-1">
+          کد سفارش: <span className="font-mono text-ink" dir="ltr">{order.code}</span>
+        </p>
+      )}
+      {order?.total && <p className="text-ash text-sm mb-6">مبلغ پرداخت‌شده: {formatPrice(order.total)}</p>}
+      <div className="flex items-center justify-center gap-3">
+        <Link href="/account/orders" className="bg-grape hover:bg-grape/80 text-white font-bold px-5 py-2.5 rounded-btn transition">
+          پیگیری سفارش
+        </Link>
+        <Link href="/products" className="bg-panel border border-line text-ink px-5 py-2.5 rounded-btn transition">
+          ادامه خرید
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export default function CheckoutCallbackPage() {
+  return (
+    <Suspense fallback={<div className="text-center py-24 text-ash">در حال بارگذاری...</div>}>
+      <CallbackContent />
+    </Suspense>
+  );
+}
+---------------------------------
+src/app/checkout/page.js :
+
+'use client';
+// ============================================================
+// صفحه‌ی نهایی کردن خرید (چک‌اوت)
+// ------------------------------------------------------------
+// جریان کامل:
+// ۱. کاربر آدرس + روش ارسال رو وارد می‌کنه
+// ۲. با زدن «پرداخت»، اول یه سفارش با وضعیت pending توی بک‌اند
+//    ساخته میشه (POST /orders — پیشنهادی، توی backend-additions)
+// ۳. بعد id همون سفارش به POST /payment/request فرستاده میشه
+//    که یه لینک پرداخت زرین‌پال برمی‌گردونه
+// ۴. کاربر به درگاه زرین‌پال ریدایرکت میشه؛ بعد از پرداخت،
+//    زرین‌پال کاربر رو به /checkout/callback برمی‌گردونه
+//
+// ⚠️ فیلدهای shippingInfo دقیقاً منطبق با چیزیه که توی صفحه‌ی
+// جزئیات سفارش پنل ادمین دیدیم: name, phone, city, postalCode, address
+// ============================================================
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useCart } from '@/contexts/CartContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/api';
+import { formatPrice } from '@/lib/format';
+import Link from 'next/link';
+
+const SHIPPING_METHODS = [
+  { value: 'standard', label: 'ارسال عادی (۲ تا ۴ روز کاری)', cost: 350000 },
+  { value: 'express', label: 'ارسال پیشتاز (۱ تا ۲ روز کاری)', cost: 650000 },
+];
+
+export default function CheckoutPage() {
+  const router = useRouter();
+  const { items, subtotal, clearCart, hydrated } = useCart();
+  const { user, loading: authLoading } = useAuth();
+
+  const [shippingInfo, setShippingInfo] = useState({ name: '', phone: '', city: '', postalCode: '', address: '' });
+  const [shippingMethod, setShippingMethod] = useState('standard');
+  const [couponCode, setCouponCode] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const shippingCost = SHIPPING_METHODS.find(m => m.value === shippingMethod)?.cost || 0;
+  const total = subtotal + shippingCost;
+
+  const handleChange = (e) => setShippingInfo(f => ({ ...f, [e.target.name]: e.target.value }));
+
+  const handlePay = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      // ۱) ساخت سفارش
+      const orderPayload = {
+        items: items.map(i => ({ product: i.productId, quantity: i.quantity, price: i.price })),
+        shippingInfo,
+        shippingMethod,
+        couponCode: couponCode || undefined,
+      };
+      const orderRes = await api.createOrder(orderPayload);
+      const orderId = orderRes.order.id;
+
+      // ۲) درخواست لینک پرداخت زرین‌پال
+      const payRes = await api.requestPayment(orderId);
+
+      // ۳) ریدایرکت به درگاه (حالت sandbox هم همینجوری کار می‌کنه)
+      clearCart();
+      window.location.href = payRes.paymentUrl;
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  if (!hydrated || authLoading) return null;
+
+  if (!user) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-20 text-center">
+        <div className="text-5xl mb-4">🔒</div>
+        <h1 className="text-ink font-bold mb-2">برای تکمیل خرید وارد شوید</h1>
+        <p className="text-ash text-sm mb-6">سفارش‌ها باید به حساب کاربری شما متصل بشن تا بتونید پیگیریشون کنید.</p>
+        <Link href="/login" className="bg-grape hover:bg-grape/80 text-white font-bold px-6 py-3 rounded-btn transition inline-block">
+          ورود / ثبت‌نام
+        </Link>
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-20 text-center">
+        <p className="text-ash">سبد خرید شما خالیه.</p>
+        <Link href="/products" className="text-grape-light hover:underline text-sm mt-2 inline-block">مشاهده محصولات</Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
+      <h1 className="text-xl font-bold text-ink mb-6">نهایی کردن خرید</h1>
+
+      {error && <div className="bg-ember/10 text-ember text-sm px-4 py-3 rounded-btn mb-4">{error}</div>}
+
+      <form onSubmit={handlePay} className="flex flex-col lg:flex-row gap-6">
+        <div className="flex-1 space-y-6">
+          {/* آدرس گیرنده */}
+          <div className="bg-panel border border-line rounded-card p-5 space-y-4">
+            <h2 className="font-bold text-ink">اطلاعات گیرنده</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input name="name" required value={shippingInfo.name} onChange={handleChange} placeholder="نام و نام خانوادگی"
+                className="bg-night border border-line rounded-btn px-4 py-2.5 text-sm text-ink focus:border-grape transition" />
+              <input name="phone" required dir="ltr" value={shippingInfo.phone} onChange={handleChange} placeholder="09123456789"
+                className="bg-night border border-line rounded-btn px-4 py-2.5 text-sm text-ink focus:border-grape transition" />
+              <input name="city" required value={shippingInfo.city} onChange={handleChange} placeholder="شهر"
+                className="bg-night border border-line rounded-btn px-4 py-2.5 text-sm text-ink focus:border-grape transition" />
+              <input name="postalCode" required dir="ltr" value={shippingInfo.postalCode} onChange={handleChange} placeholder="کد پستی"
+                className="bg-night border border-line rounded-btn px-4 py-2.5 text-sm text-ink focus:border-grape transition" />
+            </div>
+            <textarea name="address" required rows={2} value={shippingInfo.address} onChange={handleChange} placeholder="آدرس کامل"
+              className="w-full bg-night border border-line rounded-btn px-4 py-2.5 text-sm text-ink focus:border-grape transition resize-none" />
+          </div>
+
+          {/* روش ارسال */}
+          <div className="bg-panel border border-line rounded-card p-5 space-y-3">
+            <h2 className="font-bold text-ink mb-1">روش ارسال</h2>
+            {SHIPPING_METHODS.map(m => (
+              <label key={m.value} className="flex items-center justify-between p-3 bg-night rounded-btn cursor-pointer border border-line has-[:checked]:border-grape">
+                <div className="flex items-center gap-2">
+                  <input type="radio" name="shippingMethod" checked={shippingMethod === m.value} onChange={() => setShippingMethod(m.value)} className="accent-grape" />
+                  <span className="text-sm text-ink">{m.label}</span>
+                </div>
+                <span className="text-xs text-ash font-mono">{formatPrice(m.cost)}</span>
+              </label>
+            ))}
+          </div>
+
+          {/* کد تخفیف */}
+          <div className="bg-panel border border-line rounded-card p-5">
+            <h2 className="font-bold text-ink mb-3">کد تخفیف</h2>
+            <input
+              value={couponCode}
+              onChange={e => setCouponCode(e.target.value)}
+              placeholder="کد تخفیف رو وارد کنید (اختیاری)"
+              className="w-full bg-night border border-line rounded-btn px-4 py-2.5 text-sm text-ink focus:border-grape transition"
+            />
+          </div>
+        </div>
+
+        {/* خلاصه سفارش + پرداخت */}
+        <div className="lg:w-80 shrink-0">
+          <div className="bg-panel border border-line rounded-card p-5 lg:sticky lg:top-24 space-y-3">
+            <h2 className="font-bold text-ink mb-2">خلاصه سفارش</h2>
+            {items.map(i => (
+              <div key={i.productId} className="flex justify-between text-xs text-ash">
+                <span className="line-clamp-1">{i.name} × {i.quantity.toLocaleString('fa-IR')}</span>
+                <span className="font-mono shrink-0">{formatPrice(i.price * i.quantity)}</span>
+              </div>
+            ))}
+            <div className="border-t border-line pt-3 space-y-1.5">
+              <div className="flex justify-between text-sm text-ash">
+                <span>جمع کالاها</span>
+                <span className="font-mono">{formatPrice(subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-ash">
+                <span>هزینه ارسال</span>
+                <span className="font-mono">{formatPrice(shippingCost)}</span>
+              </div>
+              <div className="flex justify-between text-ink font-bold pt-2 border-t border-line">
+                <span>مبلغ قابل پرداخت</span>
+                <span className="font-mono">{formatPrice(total)}</span>
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-grape hover:bg-grape/80 text-white font-bold py-3 rounded-btn transition disabled:opacity-50 mt-2"
+            >
+              {loading ? 'در حال انتقال به درگاه...' : 'پرداخت با زرین‌پال'}
+            </button>
+            <p className="text-[10px] text-ash-dark text-center">پرداخت شما از طریق درگاه امن زرین‌پال انجام میشه</p>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+---------------------------------
+src/app/login/page.js :
+
+'use client';
+// ============================================================
+// صفحه‌ی ورود — کد یک‌بارمصرف پیامکی
+// ------------------------------------------------------------
+// این صفحه فقط از endpoint های موجود بک‌اند استفاده می‌کنه
+// (/auth/send-otp و /auth/verify-otp، همون‌هایی که پنل ادمین هم
+// استفاده می‌کنه) — پس با وصل شدن SMS.ir به بک‌اند، اینجا هیچ
+// تغییری لازم نداره؛ فقط پیامک واقعی به‌جای هر مکانیزم تستی فعلی
+// ارسال میشه.
+// ============================================================
+
+import { useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+
+export default function LoginPage() {
+  const router = useRouter();
+  const { login } = useAuth();
+  const [step, setStep] = useState('phone'); // 'phone' | 'otp'
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [resendTimer, setResendTimer] = useState(0);
+  const timerRef = useRef(null);
+
+  const startResendTimer = () => {
+    setResendTimer(60);
+    clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setResendTimer(t => {
+        if (t <= 1) { clearInterval(timerRef.current); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+  };
+
+  const handleSendOTP = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await api.sendOTP(phone);
+      setStep('otp');
+      startResendTimer();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const data = await api.verifyOTP(phone, code);
+      login(data.token, data.user);
+      router.push('/account');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-sm mx-auto px-4 py-16">
+      <h1 className="text-xl font-bold text-ink text-center mb-2">ورود به تک‌نبولا</h1>
+      <p className="text-sm text-ash text-center mb-8">
+        {step === 'phone' ? 'شماره موبایل خودتون رو وارد کنید' : `کد ارسال‌شده به ${phone} رو وارد کنید`}
+      </p>
+
+      {error && <div className="bg-ember/10 text-ember text-sm px-4 py-3 rounded-btn mb-4">{error}</div>}
+
+      {step === 'phone' ? (
+        <form onSubmit={handleSendOTP} className="space-y-4">
+          <input
+            type="tel"
+            dir="ltr"
+            required
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
+            placeholder="09123456789"
+            pattern="09[0-9]{9}"
+            className="w-full bg-panel border border-line rounded-btn px-4 py-3 text-ink text-center tracking-wider focus:border-grape transition"
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-grape hover:bg-grape/80 text-white font-bold py-3 rounded-btn transition disabled:opacity-50"
+          >
+            {loading ? 'در حال ارسال...' : 'دریافت کد ورود'}
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={handleVerify} className="space-y-4">
+          <input
+            type="text"
+            dir="ltr"
+            required
+            inputMode="numeric"
+            maxLength={6}
+            value={code}
+            onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
+            placeholder="کد ۴ رقمی"
+            className="w-full bg-panel border border-line rounded-btn px-4 py-3 text-ink text-center text-xl tracking-[0.5em] focus:border-grape transition"
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-grape hover:bg-grape/80 text-white font-bold py-3 rounded-btn transition disabled:opacity-50"
+          >
+            {loading ? 'در حال بررسی...' : 'تایید و ورود'}
+          </button>
+          <div className="text-center">
+            {resendTimer > 0 ? (
+              <span className="text-xs text-ash-dark">ارسال مجدد کد تا {resendTimer.toLocaleString('fa-IR')} ثانیه دیگر</span>
+            ) : (
+              <button type="button" onClick={handleSendOTP} className="text-xs text-grape-light hover:underline">
+                ارسال مجدد کد
+              </button>
+            )}
+          </div>
+          <button type="button" onClick={() => setStep('phone')} className="w-full text-xs text-ash hover:text-ink transition">
+            ← ویرایش شماره موبایل
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+---------------------------------
+src/app/products/[id]/page.js :
+
+import { notFound } from 'next/navigation';
+import { api } from '@/lib/api';
+import { extractProductId, productUrl, buildProductJsonLd, buildBreadcrumbJsonLd } from '@/lib/seo';
+import { categoryLabel } from '@/lib/categories';
+import { formatPrice } from '@/lib/format';
+import Breadcrumbs from '@/components/common/Breadcrumbs';
+import StarRating from '@/components/common/StarRating';
+import ProductGallery from '@/components/product/ProductGallery';
+import ProductSpecs from '@/components/product/ProductSpecs';
+import AddToCartBox from '@/components/product/AddToCartBox';
+import ReviewsSection from '@/components/product/ReviewsSection';
+import RelatedProducts from '@/components/product/RelatedProducts';
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://technubela.example.com';
+
+// ============================================================
+// صفحه‌ی جزئیات محصول
+// ------------------------------------------------------------
+// این صفحه از نظر سئو مهم‌ترین صفحه‌ی فروشگاهه: متادیتای کامل،
+// JSON-LD محصول (قیمت/موجودی/امتیاز برای Rich Results گوگل)،
+// و JSON-LD Breadcrumb. همه‌چیز سمت سرور رندر میشه.
+// ============================================================
+
+async function getProductSafe(param) {
+  try {
+    const id = extractProductId(param);
+    const data = await api.getProduct(id);
+    return data.product;
+  } catch {
+    return null;
+  }
+}
+
+export async function generateMetadata({ params }) {
+  const { id } = await params;
+  const product = await getProductSafe(id);
+  if (!product) return {};
+
+  const description = product.desc?.slice(0, 155) || `خرید ${product.name} با بهترین قیمت و گارانتی اصالت`;
+  const image = product.images?.[0] ? `${SITE_URL}${product.images[0]}` : undefined;
+
+  return {
+    title: `${product.name} | قیمت و خرید`,
+    description,
+    alternates: { canonical: productUrl(product) },
+    openGraph: {
+      title: product.name,
+      description,
+      images: image ? [image] : [],
+      type: 'website',
+    },
+  };
+}
+
+export default async function ProductDetailPage({ params }) {
+  const { id } = await params;
+  const product = await getProductSafe(id);
+  if (!product) notFound();
+
+  // نظرات و محصولات مرتبط رو موازی می‌گیریم
+  const [reviewsData, relatedData] = await Promise.allSettled([
+    api.getProductReviews(product.id),
+    api.getProducts(`?category=${product.category}&limit=8`),
+  ]);
+
+  const reviews = reviewsData.status === 'fulfilled'
+    ? (reviewsData.value.reviews || []).filter(r => r.status === 'approved' || !r.status)
+    : [];
+  const related = relatedData.status === 'fulfilled'
+    ? (relatedData.value.products || []).filter(p => p.id !== product.id).slice(0, 4)
+    : [];
+
+  const breadcrumbItems = [
+    { name: 'خانه', href: '/' },
+    { name: categoryLabel(product.category), href: `/category/${product.category}` },
+    { name: product.name, href: productUrl(product) },
+  ];
+
+  const productJsonLd = buildProductJsonLd(product, SITE_URL);
+  const breadcrumbJsonLd = buildBreadcrumbJsonLd(breadcrumbItems, SITE_URL);
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 md:px-6 py-6">
+      {/* eslint-disable-next-line react/no-danger */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }} />
+      {/* eslint-disable-next-line react/no-danger */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
+
+      <div className="mb-4">
+        <Breadcrumbs items={breadcrumbItems} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-1">
+          <ProductGallery images={product.images} name={product.name} />
+        </div>
+
+        <div className="lg:col-span-1 space-y-3">
+          <span className="text-xs text-ash-dark">{product.brand}</span>
+          <h1 className="text-xl md:text-2xl font-bold text-ink leading-8">{product.name}</h1>
+          {product.reviewCount > 0 && (
+            <div className="flex items-center gap-2">
+              <StarRating rating={product.rating} showValue />
+              <span className="text-xs text-ash-dark">({product.reviewCount.toLocaleString('fa-IR')} نظر)</span>
+            </div>
+          )}
+          <p className="text-sm text-ash leading-7 whitespace-pre-line">{product.desc}</p>
+        </div>
+
+        <div className="lg:col-span-1">
+          <div className="lg:sticky lg:top-24">
+            <AddToCartBox product={product} />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-6">
+          <ProductSpecs specs={product.specs} />
+          <ReviewsSection productId={product.id} initialReviews={reviews} />
+        </div>
+        <div className="lg:col-span-1">
+          {/* جای مناسب برای بنر تبلیغاتی/گارانتی توی دسکتاپ، اگه لازم شد */}
+        </div>
+      </div>
+
+      <RelatedProducts products={related} />
+    </div>
+  );
+}
+---------------------------------
+src/app/products/page.js :
+
+import { Suspense } from 'react';
+import { api } from '@/lib/api';
+import { buildProductQuery } from '@/lib/buildProductQuery';
+import ProductCard from '@/components/product/ProductCard';
+import FilterSidebar from '@/components/product/FilterSidebar';
+import ProductToolbar from '@/components/product/ProductToolbar';
+import ActiveFilters from '@/components/product/ActiveFilters';
+import Pagination from '@/components/common/Pagination';
+import Breadcrumbs from '@/components/common/Breadcrumbs';
+
+// این چهارتا کامپوننت از useSearchParams استفاده می‌کنن، برای همین
+// طبق قوانین Next.js باید داخل <Suspense> رندر بشن وگرنه build ارور میده.
+
+// ============================================================
+// صفحه‌ی «همه محصولات» — Server Component
+// ------------------------------------------------------------
+// دیتا سمت سرور گرفته میشه (fetch مستقیم توی همین فایل، قبل از
+// رندر) که هم برای سئو بهتره (گوگل بدون اجرای جاوااسکریپت هم
+// محتوا رو می‌بینه) هم برای سرعت اولین نمایش.
+// فیلترها (FilterSidebar) خودشون Client Component هستن و از
+// روی همین URL که سرور استفاده کرده، وضعیت انتخاب‌شده رو می‌خونن.
+// ============================================================
+
+export async function generateMetadata({ searchParams }) {
+  const sp = await searchParams;
+  const title = sp.search ? `نتایج جستجو برای «${sp.search}»` : 'همه محصولات';
+  return {
+    title,
+    description: 'مرور و خرید انواع قطعات کامپیوتر، لپ‌تاپ، جانبی و گجت با فیلتر پیشرفته بر اساس برند، قیمت و دسته‌بندی.',
+    // صفحات فیلترشده رو از ایندکس گوگل کنار می‌ذاریم تا محتوای تکراری ایجاد نشه؛
+    // فقط خودِ صفحه‌ی پایه‌ی /products ایندکس میشه.
+    robots: Object.keys(sp).length > 0 ? { index: false, follow: true } : { index: true, follow: true },
+  };
+}
+
+export default async function ProductsPage({ searchParams }) {
+  const sp = await searchParams;
+  const query = buildProductQuery(sp);
+
+  // fetch محصولات و facet ها (برای گزینه‌های فیلتر) به‌صورت موازی
+  const [productsData, facetsData] = await Promise.allSettled([
+    api.getProducts(query),
+    api.getProductFacets(sp.category ? `?category=${sp.category}` : ''),
+  ]);
+
+  const products = productsData.status === 'fulfilled' ? (productsData.value.products || []) : [];
+  const total = productsData.status === 'fulfilled' ? (productsData.value.total ?? products.length) : 0;
+  const totalPages = productsData.status === 'fulfilled' ? (productsData.value.totalPages ?? 1) : 1;
+  const facets = facetsData.status === 'fulfilled' ? facetsData.value : { brands: [] };
+  const page = Number(sp.page) || 1;
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 md:px-6 py-6">
+      <div className="mb-4">
+        <Breadcrumbs items={[{ name: 'خانه', href: '/' }, { name: 'همه محصولات', href: '/products' }]} />
+      </div>
+
+      <h1 className="text-xl md:text-2xl font-bold text-ink mb-6">
+        {sp.search ? `نتایج جستجو برای «${sp.search}»` : 'همه محصولات'}
+      </h1>
+
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="hidden lg:block">
+          <Suspense fallback={null}>
+            <FilterSidebar facets={facets} />
+          </Suspense>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <Suspense fallback={null}>
+            <ProductToolbar total={total} facets={facets} />
+            <ActiveFilters />
+          </Suspense>
+
+          {products.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+              {products.map(p => <ProductCard key={p.id} product={p} />)}
+            </div>
+          )}
+
+          <Suspense fallback={null}>
+            <Pagination page={page} totalPages={totalPages} />
+          </Suspense>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="text-center py-20 bg-panel border border-line rounded-card">
+      <div className="text-5xl mb-4">🔍</div>
+      <p className="text-ink font-bold mb-1">محصولی با این فیلترها پیدا نشد</p>
+      <p className="text-sm text-ash">فیلترها رو تغییر بده یا کلمه‌ی جستجوی دیگه‌ای امتحان کن.</p>
+    </div>
+  );
+}
+---------------------------------
+src/app/global.css :
+
+/* ============================================================
+   GLOBAL DESIGN TOKENS — technubela storefront
+   ------------------------------------------------------------
+   این فایل رنگ‌ها و فونت‌های پنل ادمین رو عیناً حفظ کرده
+   (برای یکپارچگی برند بین ادمین و فروشگاه)، به‌علاوه‌ی چند
+   توکن اضافه‌ی مخصوص فروشگاه (amber برای امتیاز/نشان‌ها،
+   فونت مونو برای قیمت و مشخصات فنی — حس «تکنیکال» مناسب یه
+   فروشگاه قطعات کامپیوتر).
+   ============================================================ */
+
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css');
+/* فونت مونو برای قیمت‌ها، کد سفارش، و جدول مشخصات فنی (حس تکنیکال) */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+@import 'tailwindcss';
+/* فونت فارسی Vazirmatn برای متن و رابط کاربری (همون فونت پنل ادمین) */
+
+@theme {
+  /* --- پس‌زمینه‌ها: تم روشن، سفید با تینت آبی خیلی ملایم --- */
+  --color-night: #f8fafc;   /* بوم صفحه (page canvas) — تقریباً سفید */
+  --color-panel: #ffffff;   /* سطح اصلی کارت‌ها/هدر — سفید خالص، روی بومِ کم‌رنگ «شناور» به‌نظر میاد */
+  --color-card: #eff6ff;    /* سطح تودرتو/حالت هاور — آبیِ خیلی روشن، برند رو حتی توی سطوح خنثی هم حفظ می‌کنه */
+  --color-line: #e2e8f0;    /* بوردر/جداکننده */
+
+  /* --- رنگ‌های برند: آبی به‌عنوان رنگ اصلی --- */
+  --color-grape: #2563eb;       /* آبی اصلی — دکمه‌ها، فوکوس، CTA */
+  --color-grape-light: #1d4ed8; /* آبی برای متن/لینک روی پس‌زمینه‌ی سفید (با اینکه اسمش light ه، برای کنتراست بهتر روی سفید یکم پررنگ‌تره) */
+  --color-lagoon: #0891b2;      /* آبی-فیروزه‌ای مکمل — تنوع بصری در همون خانواده‌ی آبی */
+  --color-leaf: #16a34a;        /* سبز — فقط برای وضعیت موفقیت (استاندارد جهانیه، نه رنگ اصلی برند) */
+  --color-ember: #dc2626;       /* قرمز — فقط برای خطا/تخفیف */
+
+  /* --- امتیاز ستاره‌ای / نشان‌های ویژه --- */
+  --color-amber: #d97706;
+
+  /* --- متن --- */
+  --color-ink: #0f172a;      /* رنگ اصلی متن (تیره، روی پس‌زمینه‌ی سفید) — جایگزین text-white قدیمی */
+  --color-ash: #64748b;      /* متن ثانویه */
+  --color-ash-dark: #94a3b8; /* متن کم‌رنگ‌تر/کم‌اهمیت‌تر (برچسب، تاریخ) */
+
+  /* --- شعاع گردی (یکسان با پنل ادمین) --- */
+  --radius-btn: 0.6rem;
+  --radius-card: 1rem;
+
+  /* --- فونت‌ها --- */
+  --font-sans: 'Vazirmatn', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Courier New', monospace;
+}
+
+body {
+  background-color: var(--color-night);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* اسکرول نرم برای لینک‌های لنگر (مثلاً فهرست مطالب مقاله) */
+html {
+  scroll-behavior: smooth;
+}
+
+/* استایل پیش‌فرض اسکرول‌بار هماهنگ با تم روشن */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--color-night); }
+::-webkit-scrollbar-thumb { background: var(--color-ash-dark); border-radius: 8px; opacity: 0.5; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-ash); }
+
+/* حالت focus قابل مشاهده برای دسترسی‌پذیری (کیبورد) */
+:focus-visible {
+  outline: 2px solid var(--color-grape-light);
+  outline-offset: 2px;
+}
+
+/* احترام به کاربرانی که انیمیشن کمتر می‌خوان */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* کلاس کمکی برای محدود کردن متن به چند خط (کارت محصول/مقاله) */
+.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* پس‌زمینه‌ی هگزاگونال ظریف برای هیرو — تداعی‌کننده‌ی برد مدار/چیپست،
+   امضای بصری این طراحی برای یه فروشگاه قطعات کامپیوتر.
+   روی تم روشن، رنگ خط‌ها رو از یه آبی خیلی کم‌رنگ گرفتیم (نه از
+   --color-line که روی سفید تقریباً دیده نمیشه) */
+.circuit-bg {
+  background-image:
+    linear-gradient(#bfdbfe 1px, transparent 1px),
+    linear-gradient(90deg, #bfdbfe 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.4;
+}
+---------------------------------
+src/app/layout.js :
+
+import './globals.css';
+import { CartProvider } from '@/contexts/CartContext';
+import { AuthProvider } from '@/contexts/AuthContext';
+import Header from '@/components/layout/Header';
+import Footer from '@/components/layout/Footer';
+
+// ============================================================
+// ROOT LAYOUT
+// ------------------------------------------------------------
+// - html lang="fa" dir="rtl" برای درست نمایش داده شدن فارسی
+// - متادیتای پیش‌فرض سئو (هر صفحه می‌تونه override کنه با
+//   export function generateMetadata در همون page.js)
+// - Organization JSON-LD یه بار توی کل سایت (به گوگل کمک می‌کنه
+//   نام برند، لوگو، و شبکه‌های اجتماعی رو توی نتایج جستجو بشناسه)
+// ============================================================
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://technubela.example.com';
+
+export const metadata = {
+  metadataBase: new URL(SITE_URL),
+  title: { default: 'تک‌نبولا | فروشگاه قطعات کامپیوتر و گجت', template: '%s | تک‌نبولا' },
+  description: 'خرید آنلاین قطعات کامپیوتر، لپ‌تاپ، جانبی و گجت‌های کاربردی با گارانتی اصالت و ارسال سریع به سراسر ایران.',
+  keywords: ['قطعات کامپیوتر', 'کارت گرافیک', 'خرید لپ‌تاپ', 'فروشگاه کامپیوتر', 'گجت کامپیوتری'],
+  openGraph: {
+    type: 'website',
+    locale: 'fa_IR',
+    siteName: 'تک‌نبولا',
+    title: 'تک‌نبولا | فروشگاه قطعات کامپیوتر و گجت',
+    description: 'خرید آنلاین قطعات کامپیوتر، لپ‌تاپ، جانبی و گجت‌های کاربردی با گارانتی اصالت.',
+  },
+  twitter: { card: 'summary_large_image' },
+  robots: { index: true, follow: true },
+};
+
+export const viewport = { themeColor: '#ffffff' };
+
+export default function RootLayout({ children }) {
+  const orgJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'OnlineStore',
+    name: 'تک‌نبولا',
+    url: SITE_URL,
+    // ⚠️ لوگوی واقعی رو جایگزین کن — فایل رو توی public/logo.png بذار
+    logo: `${SITE_URL}/logo.png`,
+    telephone: '021-91000000',
+  };
+
+  return (
+    <html lang="fa" dir="rtl">
+      <body className="font-sans antialiased">
+        {/* eslint-disable-next-line react/no-danger */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
+        />
+        <AuthProvider>
+          <CartProvider>
+            <Header />
+            <main className="min-h-[60vh]">{children}</main>
+            <Footer />
+          </CartProvider>
+        </AuthProvider>
+      </body>
+    </html>
+  );
+}
+---------------------------------
+src/app/not-found.js :
+
+import Link from 'next/link';
+
+export const metadata = { title: 'صفحه پیدا نشد' };
+
+export default function NotFound() {
+  return (
+    <div className="max-w-md mx-auto px-4 py-24 text-center">
+      <div className="text-6xl mb-4">🔌</div>
+      <h1 className="text-ink font-bold text-xl mb-2">صفحه‌ای که دنبالش بودید پیدا نشد</h1>
+      <p className="text-ash text-sm mb-6">ممکنه لینک اشتباه باشه یا محصول/مقاله حذف شده باشه.</p>
+      <Link href="/" className="bg-grape hover:bg-grape/80 text-white font-bold px-6 py-3 rounded-btn transition inline-block">
+        بازگشت به صفحه اصلی
+      </Link>
+    </div>
+  );
+}
+---------------------------------
+src/app/page.js :
+
+import Link from 'next/link';
+import { api } from '@/lib/api';
+import { CATEGORY_GROUPS } from '@/lib/categories';
+import ProductCard from '@/components/product/ProductCard';
+import BlogCard from '@/components/blog/BlogCard';
+
+// ============================================================
+// صفحه‌ی اصلی — Server Component
+// ------------------------------------------------------------
+// بخش‌ها: هیرو (با پس‌زمینه‌ی مدار/شبکه‌ای که امضای بصری سایته)،
+// دسته‌بندی‌های پرکاربرد، پرفروش‌ها، جدیدترین‌ها، نشان‌های اعتماد،
+// و پیش‌نمایش مقالات وبلاگ (برای internal linking و سئو).
+// ============================================================
+
+export const metadata = {
+  title: 'تک‌نبولا | فروشگاه تخصصی قطعات کامپیوتر و گجت',
+  description: 'خرید آنلاین کارت گرافیک، پردازنده، لپ‌تاپ، جانبی و گجت‌های کاربردی با گارانتی اصالت کالا و ارسال سریع به سراسر ایران.',
+  alternates: { canonical: '/' },
+};
+
+export default async function HomePage() {
+  // درخواست‌ها موازی گرفته میشن تا صفحه سریع‌تر لود بشه
+  const [bestsellersRes, newArrivalsRes, postsRes] = await Promise.allSettled([
+    api.getProducts('?isBestseller=true&limit=8'),
+    api.getProducts('?sort=newest&limit=8'),
+    api.getBlogPosts('?limit=3'),
+  ]);
+
+  const bestsellers = bestsellersRes.status === 'fulfilled' ? (bestsellersRes.value.products || []) : [];
+  const newArrivals = newArrivalsRes.status === 'fulfilled' ? (newArrivalsRes.value.products || []) : [];
+  const posts = postsRes.status === 'fulfilled' ? (postsRes.value.posts || []) : [];
+
+  // یه دسته از هر گروه، برای نمایش شش‌تایی روی صفحه‌ی اصلی
+  const featuredCategories = CATEGORY_GROUPS.flatMap(g => g.items).slice(0, 12);
+
+  return (
+    <div>
+      {/* ===== هیرو ===== */}
+      <section className="relative overflow-hidden border-b border-line">
+        <div className="absolute inset-0 circuit-bg" aria-hidden="true" />
+        <div className="absolute inset-0 bg-gradient-to-b from-grape/10 via-transparent to-night" aria-hidden="true" />
+        <div className="relative max-w-7xl mx-auto px-4 md:px-6 py-16 md:py-24 text-center">
+          <span className="inline-block text-xs bg-panel border border-line text-grape-light px-3 py-1.5 rounded-full mb-5">
+            ارسال به سراسر ایران در کمتر از ۴۸ ساعت
+          </span>
+          <h1 className="text-3xl md:text-5xl font-bold text-ink leading-tight mb-4">
+            قطعات کامپیوتر و گجت،<br className="hidden md:block" /> با <span className="text-transparent bg-clip-text bg-gradient-to-l from-grape-light to-lagoon">اصالت تضمینی</span>
+          </h1>
+          <p className="text-ash max-w-xl mx-auto mb-8">
+            از کارت گرافیک و پردازنده تا لوازم جانبی و گجت‌های کاربردی روزمره — همه‌چیز برای ست‌آپ شما، یک‌جا.
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <Link href="/products" className="bg-grape hover:bg-grape/80 text-white font-bold px-6 py-3 rounded-btn transition">
+              مشاهده محصولات
+            </Link>
+            <Link href="/category/gpu" className="bg-panel border border-line hover:border-grape-light text-ink font-bold px-6 py-3 rounded-btn transition">
+              کارت‌های گرافیک
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <div className="max-w-7xl mx-auto px-4 md:px-6">
+        {/* ===== دسته‌بندی‌های پرکاربرد ===== */}
+        <section className="py-10">
+          <h2 className="text-lg font-bold text-ink mb-5">دسته‌بندی‌ها</h2>
+          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {featuredCategories.map(cat => (
+              <Link
+                key={cat.slug}
+                href={`/category/${cat.slug}`}
+                className="flex flex-col items-center gap-2 bg-panel border border-line rounded-card p-4 hover:border-grape/60 hover:-translate-y-0.5 transition"
+              >
+                <span className="text-2xl">{cat.icon}</span>
+                <span className="text-xs text-ash text-center">{cat.label}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {/* ===== پرفروش‌ترین‌ها ===== */}
+        {bestsellers.length > 0 && (
+          <ProductSection title="پرفروش‌ترین‌ها" href="/products?isBestseller=true" products={bestsellers} />
+        )}
+
+        {/* ===== جدیدترین‌ها ===== */}
+        {newArrivals.length > 0 && (
+          <ProductSection title="جدیدترین محصولات" href="/products?sort=newest" products={newArrivals} />
+        )}
+
+        {/* ===== نشان‌های اعتماد ===== */}
+        <section className="py-10 grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[
+            { icon: '🛡️', title: 'گارانتی اصالت کالا', text: 'همه‌ی محصولات دارای گارانتی رسمی و اصالت تضمین‌شده' },
+            { icon: '🚚', title: 'ارسال سریع', text: 'ارسال به سراسر کشور در کمتر از ۴۸ ساعت' },
+            { icon: '💬', title: 'پشتیبانی تخصصی', text: 'مشاوره‌ی رایگان قبل و بعد از خرید توسط کارشناسان سخت‌افزار' },
+          ].map(item => (
+            <div key={item.title} className="bg-panel border border-line rounded-card p-5 flex gap-4 items-start">
+              <span className="text-3xl">{item.icon}</span>
+              <div>
+                <h3 className="text-ink font-bold text-sm mb-1">{item.title}</h3>
+                <p className="text-ash text-xs leading-6">{item.text}</p>
+              </div>
+            </div>
+          ))}
+        </section>
+
+        {/* ===== پیش‌نمایش وبلاگ ===== */}
+        {posts.length > 0 && (
+          <section className="py-10">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-ink">از مجله تک‌نبولا</h2>
+              <Link href="/blog" className="text-sm text-grape-light hover:underline">مشاهده همه →</Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {posts.map(post => <BlogCard key={post.id} post={post} />)}
+            </div>
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProductSection({ title, href, products }) {
+  return (
+    <section className="py-6 border-t border-line">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-lg font-bold text-ink">{title}</h2>
+        <Link href={href} className="text-sm text-grape-light hover:underline">مشاهده همه →</Link>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {products.map(p => <ProductCard key={p.id} product={p} />)}
+      </div>
+    </section>
+  );
+}
+---------------------------------
+src/app/robots.js :
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://technubela.example.com';
+
+// Next.js از روی این فایل، خودکار /robots.txt رو می‌سازه.
+export default function robots() {
+  return {
+    rules: {
+      userAgent: '*',
+      allow: '/',
+      // صفحات شخصی/حساس رو از ایندکس گوگل کنار می‌ذاریم
+      disallow: ['/account', '/cart', '/checkout', '/login'],
+    },
+    sitemap: `${SITE_URL}/sitemap.xml`,
+  };
+}
+---------------------------------
+src/app/sitemap.js :
+
+import { api } from '@/lib/api';
+import { ALL_CATEGORIES } from '@/lib/categories';
+import { productUrl } from '@/lib/seo';
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://technubela.example.com';
+
+// ============================================================
+// sitemap.xml خودکار — Next.js از روی این فایل، آدرس
+// /sitemap.xml رو خودش می‌سازه (نیازی به فایل استاتیک نیست).
+// ⚠️ اگه تعداد محصولات/مقالات خیلی زیاد بشه (چند هزارتا)، بهتره
+// این فایل رو به چند sitemap تقسیم کنی (generateSitemaps) —
+// برای الان که کاتالوگ در حد یه فروشگاه معمولیه، یه فایل کافیه.
+// ============================================================
+
+export default async function sitemap() {
+  const staticPages = [
+    { url: `${SITE_URL}/`, changeFrequency: 'daily', priority: 1 },
+    { url: `${SITE_URL}/products`, changeFrequency: 'daily', priority: 0.9 },
+    { url: `${SITE_URL}/blog`, changeFrequency: 'daily', priority: 0.8 },
+  ];
+
+  const categoryPages = ALL_CATEGORIES.map(c => ({
+    url: `${SITE_URL}/category/${c.slug}`,
+    changeFrequency: 'daily',
+    priority: 0.7,
+  }));
+
+  let productPages = [];
+  let blogPages = [];
+
+  try {
+    const productsData = await api.getProducts('?limit=1000');
+    productPages = (productsData.products || []).map(p => ({
+      url: `${SITE_URL}${productUrl(p)}`,
+      lastModified: p.updatedAt,
+      changeFrequency: 'weekly',
+      priority: 0.6,
+    }));
+  } catch {
+    // اگه بک‌اند در دسترس نبود، فقط صفحات ثابت توی سایت‌مپ می‌مونن
+  }
+
+  try {
+    const blogData = await api.getBlogPosts('?limit=1000');
+    blogPages = (blogData.posts || []).map(p => ({
+      url: `${SITE_URL}/blog/${p.slug}`,
+      lastModified: p.updatedDate || p.date,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    }));
+  } catch {
+    // همون‌طور
+  }
+
+  return [...staticPages, ...categoryPages, ...productPages, ...blogPages];
+}
+---------------------------------
+src/components/blog/ArticleContent.js :
+
+import { slugify } from '@/lib/seo';
+
+// رندر بلوک‌های محتوای مقاله. هر heading یه id میگیره تا فهرست
+// مطالب بتونه بهش لینک بده (اسکرول نرم از globals.css فعاله).
+export default function ArticleContent({ blocks = [] }) {
+  return (
+    <div className="prose-content space-y-5">
+      {blocks.map((block, i) => {
+        if (block.type === 'heading') {
+          const id = slugify(block.text) || `section-${i}`;
+          const Tag = `h${Math.min(Math.max(block.level || 2, 2), 4)}`;
+          return (
+            <Tag key={i} id={id} className="text-ink font-bold text-xl scroll-mt-24 pt-2">
+              {block.text}
+            </Tag>
+          );
+        }
+        return (
+          <p key={i} className="text-ash leading-8 text-[15px]">
+            {block.text}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+/** استخراج فهرست مطالب (فقط heading ها) برای نمایش در سایدبار */
+export function extractHeadings(blocks = []) {
+  return blocks
+    .filter(b => b.type === 'heading')
+    .map((b, i) => ({ id: slugify(b.text) || `section-${i}`, text: b.text }));
+}
+---------------------------------
+src/components/blog/BlogCard.js :
+
+import Link from 'next/link';
+import { formatDate } from '@/lib/format';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
+
+export default function BlogCard({ post }) {
+  return (
+    <Link href={`/blog/${post.slug}`} className="group bg-panel border border-line rounded-card overflow-hidden hover:border-grape/60 transition block">
+      <div className="aspect-video bg-card overflow-hidden">
+        {post.image ? (
+          <img src={`${API_BASE}${post.image}`} alt={post.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-4xl text-ash-dark">📰</div>
+        )}
+      </div>
+      <div className="p-4">
+        <span className="text-[11px] text-lagoon">{post.category}</span>
+        <h3 className="text-ink font-bold text-sm mt-1 line-clamp-2">{post.title}</h3>
+        <p className="text-ash text-xs mt-2 line-clamp-2">{post.excerpt}</p>
+        <div className="flex items-center gap-2 text-[11px] text-ash-dark mt-3">
+          <span>{formatDate(post.date)}</span>
+          <span>·</span>
+          <span>{post.readTime?.toLocaleString('fa-IR')} دقیقه مطالعه</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+---------------------------------
+src/components/blog/ShareButtons.js :
+
+'use client';
+import { useState } from 'react';
+
+export default function ShareButtons({ url, title }) {
+  const [copied, setCopied] = useState(false);
+
+  const links = [
+    { label: 'تلگرام', href: `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title)}` },
+    { label: 'واتساپ', href: `https://wa.me/?text=${encodeURIComponent(`${title} ${url}`)}` },
+    { label: 'توییتر/X', href: `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title)}` },
+  ];
+
+  const copyLink = () => {
+    navigator.clipboard?.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-xs text-ash-dark">اشتراک‌گذاری:</span>
+      {links.map(l => (
+        <a key={l.label} href={l.href} target="_blank" rel="noopener noreferrer"
+          className="text-xs bg-card hover:bg-line text-ink px-3 py-1.5 rounded-full transition">
+          {l.label}
+        </a>
+      ))}
+      <button onClick={copyLink} className="text-xs bg-card hover:bg-line text-ink px-3 py-1.5 rounded-full transition">
+        {copied ? 'کپی شد ✓' : 'کپی لینک'}
+      </button>
+    </div>
+  );
+}
+---------------------------------
+src/components/cart/CartItem.js :
+
+'use client';
+import Link from 'next/link';
+import { useCart } from '@/contexts/CartContext';
+import { formatPrice } from '@/lib/format';
+import { extractProductId } from '@/lib/seo';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
+
+export default function CartItem({ item }) {
+  const { updateQuantity, removeItem } = useCart();
+
+  return (
+    <div className="flex gap-4 bg-panel border border-line rounded-card p-4">
+      <Link href={`/products/${item.productId}`} className="w-20 h-20 shrink-0 bg-card rounded-btn overflow-hidden">
+        {item.image ? (
+          <img src={`${API_BASE}${item.image}`} alt={item.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-2xl text-ash-dark">📦</div>
+        )}
+      </Link>
+
+      <div className="flex-1 min-w-0">
+        <Link href={`/products/${item.productId}`} className="text-sm text-ink hover:text-grape-light transition line-clamp-2">
+          {item.name}
+        </Link>
+        <div className="flex items-center justify-between mt-3">
+          <div className="flex items-center border border-line rounded-btn">
+            <button onClick={() => updateQuantity(item.productId, item.quantity - 1)} className="w-8 h-8 text-ink hover:bg-card transition">−</button>
+            <span className="w-8 text-center text-ink text-xs">{item.quantity.toLocaleString('fa-IR')}</span>
+            <button onClick={() => updateQuantity(item.productId, item.quantity + 1)} className="w-8 h-8 text-ink hover:bg-card transition">+</button>
+          </div>
+          <span className="text-ink font-bold text-sm font-mono">{formatPrice(item.price * item.quantity)}</span>
+        </div>
+      </div>
+
+      <button
+        onClick={() => removeItem(item.productId)}
+        className="text-ash-dark hover:text-ember transition self-start"
+        aria-label="حذف از سبد"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+---------------------------------
+src/components/common/Breadcrumb.js :
+
+import Link from 'next/link';
+
+// ============================================================
+// مسیر ناوبری (Breadcrumb) — هم برای UX (کاربر بدونه کجاست)
+// هم برای سئو (JSON-LD مربوطه رو از src/lib/seo.js با
+// buildBreadcrumbJsonLd می‌سازیم و توی خود صفحه تزریق می‌کنیم).
+//
+// items: [{ name: 'خانه', href: '/' }, { name: 'کارت گرافیک', href: '/category/gpu' }, ...]
+// ============================================================
+export default function Breadcrumbs({ items }) {
+  return (
+    <nav aria-label="مسیر ناوبری" className="text-xs text-ash-dark flex flex-wrap items-center gap-1.5">
+      {items.map((item, i) => (
+        <span key={item.href} className="flex items-center gap-1.5">
+          {i > 0 && <span>/</span>}
+          {i === items.length - 1 ? (
+            <span className="text-ash">{item.name}</span>
+          ) : (
+            <Link href={item.href} className="hover:text-ink transition">{item.name}</Link>
+          )}
+        </span>
+      ))}
+    </nav>
+  );
+}
+---------------------------------
+src/components/common/Pagination.js :
+
+'use client';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+
+// صفحه‌بندی — با آپدیت پارامتر page توی URL (نه state داخلی)، تا
+// لینک هر صفحه قابل اشتراک‌گذاری/ایندکس‌شدن توسط گوگل باشه.
+export default function Pagination({ page, totalPages }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  if (totalPages <= 1) return null;
+
+  const goTo = (p) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('page', p);
+    router.push(`${pathname}?${params.toString()}`, { scroll: true });
+  };
+
+  // نمایش حداکثر ۵ شماره صفحه با نقطه‌چین برای بقیه
+  const pages = [];
+  const start = Math.max(1, page - 2);
+  const end = Math.min(totalPages, start + 4);
+  for (let p = start; p <= end; p++) pages.push(p);
+
+  return (
+    <div className="flex items-center justify-center gap-2 mt-8">
+      <button
+        onClick={() => goTo(page - 1)}
+        disabled={page <= 1}
+        className="w-9 h-9 rounded-btn bg-panel text-ash hover:text-ink disabled:opacity-30 transition"
+        aria-label="صفحه قبل"
+      >
+        ›
+      </button>
+      {start > 1 && <span className="text-ash-dark px-1">…</span>}
+      {pages.map(p => (
+        <button
+          key={p}
+          onClick={() => goTo(p)}
+          className={`w-9 h-9 rounded-btn text-sm transition ${
+            p === page ? 'bg-grape text-white font-bold' : 'bg-panel text-ash hover:text-ink'
+          }`}
+        >
+          {p.toLocaleString('fa-IR')}
+        </button>
+      ))}
+      {end < totalPages && <span className="text-ash-dark px-1">…</span>}
+      <button
+        onClick={() => goTo(page + 1)}
+        disabled={page >= totalPages}
+        className="w-9 h-9 rounded-btn bg-panel text-ash hover:text-ink disabled:opacity-30 transition"
+        aria-label="صفحه بعد"
+      >
+        ‹
+      </button>
+    </div>
+  );
+}
+---------------------------------
+src/components/common/StarRating.js :
+
+// کامپوننت نمایش امتیاز ستاره‌ای — فقط نمایشی (نه ورودی)
+export default function StarRating({ rating = 0, size = 'text-sm', showValue = false }) {
+  return (
+    <div className="flex items-center gap-1" dir="ltr">
+      <div className={`flex ${size}`}>
+        {Array.from({ length: 5 }, (_, i) => (
+          <span key={i} className={i < Math.round(rating) ? 'text-amber' : 'text-line'}>★</span>
+        ))}
+      </div>
+      {showValue && <span className="text-xs text-ash">{rating.toFixed(1)}</span>}
+    </div>
+  );
+}
+---------------------------------
+src/components/layout/Footer.js :
+
+import Link from 'next/link';
+import { CATEGORY_GROUPS } from '@/lib/categories';
+
+// ============================================================
+// فوتر — لینک‌های دسته‌بندی (خوب برای سئوی داخلی/internal linking)،
+// نشان‌های اعتماد، و اطلاعات تماس.
+// Server Component (تعاملی نیست) — سبک‌تر برای بارگذاری اولیه.
+// ============================================================
+export default function Footer() {
+  return (
+    <footer className="bg-panel border-t border-line mt-16">
+      {/* نشان‌های اعتماد */}
+      <div className="border-b border-line">
+        <div className="max-w-7xl mx-auto px-6 py-6 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+          {[
+            { icon: '🚚', text: 'ارسال سریع به سراسر کشور' },
+            { icon: '↩️', text: '۷ روز ضمانت بازگشت' },
+            { icon: '🛡️', text: 'گارانتی اصالت کالا' },
+            { icon: '💳', text: 'پرداخت امن (زرین‌پال)' },
+          ].map(badge => (
+            <div key={badge.text} className="flex flex-col items-center gap-2">
+              <span className="text-2xl">{badge.icon}</span>
+              <span className="text-xs text-ash">{badge.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-10 grid grid-cols-2 md:grid-cols-5 gap-8">
+        <div className="col-span-2">
+          <Link href="/" className="text-xl font-bold text-ink">
+            تک<span className="text-grape-light">نبولا</span>
+          </Link>
+          <p className="text-sm text-ash mt-3 leading-6">
+            فروشگاه تخصصی قطعات کامپیوتر، لپ‌تاپ و گجت‌های کاربردی — تامین‌کننده‌ی معتبر
+            سخت‌افزار برای گیمرها، طراح‌ها و کاربران حرفه‌ای.
+          </p>
+          <p className="text-xs text-ash-dark mt-4" dir="ltr">تلفن: 021-91000000</p>
+        </div>
+
+        {/* دو گروه اول دسته‌بندی به‌عنوان لینک داخلی توی فوتر (خوب برای سئو) */}
+        {CATEGORY_GROUPS.slice(0, 3).map(group => (
+          <div key={group.label}>
+            <h3 className="text-sm font-bold text-ink mb-3">{group.label}</h3>
+            <ul className="space-y-2">
+              {group.items.slice(0, 6).map(item => (
+                <li key={item.slug}>
+                  <Link href={`/category/${item.slug}`} className="text-xs text-ash hover:text-ink transition">
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t border-line">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-2 text-xs text-ash-dark">
+          <span>© {new Date().getFullYear()} تک‌نبولا. تمامی حقوق محفوظ است.</span>
+          <div className="flex gap-4">
+            <Link href="/blog" className="hover:text-ink transition">مجله</Link>
+            <Link href="/products" className="hover:text-ink transition">همه محصولات</Link>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}
+---------------------------------
+src/components/layout/Header.js :
+
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+
+import { useCart } from '@/contexts/CartContext';
+import { useAuth } from '@/contexts/AuthContext';
+
+import MegaMenu from './MegaMenu';
+import MobileMenu from './MobileMenu';
+
+export default function Header() {
+  const router = useRouter();
+
+  const { count } = useCart();
+  const { user } = useAuth();
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const menuRef = useRef(null);
+
+  // بستن MegaMenu با کلیک بیرون
+  useEffect(() => {
+    function handleClick(e) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target)
+      ) {
+        setMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClick);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+    };
+  }, []);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+
+    if (search.trim()) {
+      router.push(
+        `/products?search=${encodeURIComponent(search.trim())}`
+      );
+    }
+  };
+
+  return (
+    <header className="relative z-50 bg-panel">
+
+      {/* =====================================================
+          نوار بالایی
+      ====================================================== */}
+      <div className="hidden md:block border-b border-line">
+        <div className="max-w-7xl mx-auto px-4 md:px-6">
+          <div className="h-8 flex items-center justify-between text-[11px] text-ash">
+
+            <div>
+              پشتیبانی: ۰۲۱-۹۱۰۰۰۰۰۰
+            </div>
+
+            <div className="flex items-center gap-5">
+              <Link
+                href="/account/orders"
+                className="hover:text-ink transition"
+              >
+                پیگیری سفارش
+              </Link>
+
+              <Link
+                href="/blog"
+                className="hover:text-ink transition"
+              >
+                مجله تک‌نبولا
+              </Link>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+
+      {/* =====================================================
+          هدر اصلی
+      ====================================================== */}
+      <div
+        ref={menuRef}
+        className="
+          relative
+          max-w-7xl
+          mx-auto
+          px-4
+          md:px-6
+          py-3
+          md:py-4
+
+          flex
+          items-center
+          gap-3
+          md:gap-4
+        "
+      >
+
+        {/* =================================================
+            دکمه منوی موبایل
+        ================================================== */}
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="
+            lg:hidden
+            shrink-0
+            w-10
+            h-10
+            flex
+            items-center
+            justify-center
+            rounded-btn
+            text-ink
+            bg-card
+            hover:bg-line
+            transition
+            text-xl
+          "
+          aria-label="باز کردن منو"
+        >
+          ☰
+        </button>
+
+
+        {/* =================================================
+            لوگو
+        ================================================== */}
+        <Link
+          href="/"
+          className="
+            shrink-0
+            text-lg
+            md:text-xl
+            font-bold
+            text-ink
+          "
+        >
+          تک<span className="text-grape-light">نبولا</span>
+        </Link>
+
+
+        {/* =================================================
+            دسته‌بندی‌ها
+            فقط دسکتاپ
+        ================================================== */}
+        <div className="relative hidden lg:block shrink-0">
+
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            className={`
+              flex
+              items-center
+              gap-2
+              px-4
+              py-2.5
+              rounded-btn
+              text-sm
+              font-bold
+              whitespace-nowrap
+              transition
+
+              ${menuOpen
+                ? 'bg-grape text-white'
+                : 'bg-card text-ink hover:bg-line'
+              }
+            `}
+          >
+            <span>☰</span>
+            <span>همه دسته‌بندی‌ها</span>
+          </button>
+
+        </div>
+
+
+        {/* =================================================
+            سرچ
+            موبایل مخفی
+        ================================================== */}
+        <form
+          onSubmit={handleSearch}
+          className="
+            hidden
+            md:flex
+            flex-1
+            min-w-0
+            max-w-2xl
+            relative
+          "
+        >
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="جستجوی محصول، برند یا دسته‌بندی..."
+            className="
+              w-full
+              bg-night
+              border
+              border-line
+              rounded-btn
+              pr-4
+              pl-11
+              py-2.5
+              text-sm
+              text-ink
+              placeholder:text-ash-dark
+              focus:border-grape
+              outline-none
+              transition
+            "
+          />
+
+          <button
+            type="submit"
+            className="
+              absolute
+              left-1
+              top-1/2
+              -translate-y-1/2
+
+              w-9
+              h-9
+
+              flex
+              items-center
+              justify-center
+
+              text-ash
+              hover:text-ink
+              transition
+            "
+            aria-label="جستجو"
+          >
+            🔍
+          </button>
+        </form>
+
+
+        {/* =================================================
+            آیکون‌های حساب و سبد
+        ================================================== */}
+        <div
+          className="
+            flex
+            items-center
+            gap-1
+            md:gap-2
+            shrink-0
+            mr-auto
+          "
+        >
+
+          {/* حساب */}
+          <Link
+            href={user ? '/account' : '/login'}
+            className="
+              flex
+              flex-col
+              items-center
+              justify-center
+              min-w-10
+              px-1.5
+              md:px-2
+              py-1
+              text-ash
+              hover:text-ink
+              transition
+            "
+          >
+            <span className="text-xl">
+              👤
+            </span>
+
+            <span className="hidden md:block text-[11px] mt-0.5 whitespace-nowrap">
+              {user
+                ? user.name?.split(' ')[0] || 'حساب من'
+                : 'ورود'}
+            </span>
+          </Link>
+
+
+          {/* سبد */}
+          <Link
+            href="/cart"
+            className="
+              relative
+              flex
+              flex-col
+              items-center
+              justify-center
+              min-w-10
+              px-1.5
+              md:px-2
+              py-1
+              text-ash
+              hover:text-ink
+              transition
+            "
+          >
+            <span className="text-xl">
+              🛒
+            </span>
+
+            <span className="hidden md:block text-[11px] mt-0.5 whitespace-nowrap">
+              سبد خرید
+            </span>
+
+            {count > 0 && (
+              <span
+                className="
+                  absolute
+                  -top-0.5
+                  -left-0.5
+
+                  bg-grape
+                  text-white
+
+                  text-[10px]
+                  w-5
+                  h-5
+
+                  rounded-full
+
+                  flex
+                  items-center
+                  justify-center
+
+                  font-bold
+                "
+              >
+                {count > 99
+                  ? '۹۹+'
+                  : count.toLocaleString('fa-IR')}
+              </span>
+            )}
+          </Link>
+
+        </div>
+
+
+        {/* =================================================
+            MegaMenu
+            خارج از button
+            و روی کل viewport کنترل می‌شود
+        ================================================== */}
+        {menuOpen && (
+          <MegaMenu
+            onNavigate={() => setMenuOpen(false)}
+          />
+        )}
+
+      </div>
+
+
+      {/* =====================================================
+          منوی موبایل
+      ====================================================== */}
+      <MobileMenu
+        open={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+      />
+
+    </header>
+  );
+}
+---------------------------------
+src/components/layout/MegaMenu.js :
+
+'use client';
+
+import Link from 'next/link';
+import { CATEGORY_GROUPS } from '@/lib/categories';
+
+export default function MegaMenu({ onNavigate }) {
+  return (
+    <div
+      className="
+        absolute
+        z-50
+
+        top-full
+
+        left-1/2
+        -translate-x-1/2
+
+        mt-2
+
+        w-[calc(100vw-2rem)]
+        max-w-[950px]
+      "
+    >
+      <div
+        className="
+          bg-panel
+          border
+          border-line
+          rounded-card
+          shadow-2xl
+
+          p-4
+          sm:p-5
+          lg:p-6
+
+          max-h-[calc(100vh-120px)]
+          overflow-y-auto
+        "
+      >
+
+        <div
+          className="
+            grid
+
+            grid-cols-1
+            sm:grid-cols-2
+            md:grid-cols-3
+            lg:grid-cols-4
+
+            gap-5
+            lg:gap-6
+          "
+        >
+
+          {CATEGORY_GROUPS.map((group) => (
+            <div
+              key={group.label}
+              className="min-w-0"
+            >
+
+              {/* عنوان گروه */}
+              <h3
+                className="
+                  text-ink
+                  font-bold
+                  text-sm
+                  mb-3
+                "
+              >
+                {group.label}
+              </h3>
+
+
+              {/* آیتم‌ها */}
+              <div className="space-y-2">
+
+                {group.items.map((item) => (
+                  <Link
+                    key={item.slug}
+                    href={`/category/${item.slug}`}
+                    onClick={onNavigate}
+                    className="
+                      flex
+                      items-center
+                      gap-2
+
+                      text-sm
+                      text-ash
+
+                      hover:text-ink
+
+                      transition
+
+                      min-w-0
+                    "
+                  >
+                    <span className="shrink-0">
+                      {item.icon}
+                    </span>
+
+                    <span className="truncate">
+                      {item.label}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+---------------------------------
+src/components/layout/MobileMenu.js :
+
+'use client';
+// ============================================================
+// منوی موبایل — کشوی کناری با همه‌ی دسته‌بندی‌ها
+// ============================================================
+
+import Link from 'next/link';
+import { CATEGORY_GROUPS } from '@/lib/categories';
+import { useAuth } from '@/contexts/AuthContext';
+
+export default function MobileMenu({ open, onClose }) {
+  const { user } = useAuth();
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] lg:hidden">
+      {/* پس‌زمینه‌ی تیره، کلیک برای بستن */}
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+
+      <div className="absolute top-0 right-0 h-full w-80 max-w-[85vw] bg-panel border-l border-line overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-line">
+          <span className="font-bold text-ink">منو</span>
+          <button onClick={onClose} className="text-ash hover:text-ink text-2xl leading-none" aria-label="بستن منو">✕</button>
+        </div>
+
+        <div className="p-4 border-b border-line">
+          <Link
+            href={user ? '/account' : '/login'}
+            onClick={onClose}
+            className="flex items-center gap-2 text-ink font-bold"
+          >
+            👤 {user ? `سلام ${user.name || ''}` : 'ورود / ثبت‌نام'}
+          </Link>
+        </div>
+
+        <div className="p-4 space-y-6">
+          {CATEGORY_GROUPS.map(group => (
+            <div key={group.label}>
+              <h3 className="text-xs font-bold text-grape-light mb-2">{group.label}</h3>
+              <ul className="space-y-1">
+                {group.items.map(item => (
+                  <li key={item.slug}>
+                    <Link
+                      href={`/category/${item.slug}`}
+                      onClick={onClose}
+                      className="flex items-center gap-2 py-1.5 text-sm text-ash hover:text-ink transition"
+                    >
+                      <span aria-hidden="true">{item.icon}</span> {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+
+          <div className="pt-4 border-t border-line space-y-2">
+            <Link href="/blog" onClick={onClose} className="block text-sm text-ash hover:text-ink transition">📰 مجله تک‌نبولا</Link>
+            <Link href="/account/orders" onClick={onClose} className="block text-sm text-ash hover:text-ink transition">📦 پیگیری سفارش</Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+---------------------------------
+src/components/product/ActiveFilters.js :
+
+'use client';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { categoryLabel } from '@/lib/categories';
+import { formatPrice } from '@/lib/format';
+
+// ردیف چیپ‌های فیلتر فعال — شفافیت کامل به کاربر که الان دقیقاً
+// چی فیلتر شده، با امکان حذف تکی هر فیلتر.
+export default function ActiveFilters({ lockedCategory }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const chips = [];
+
+  if (!lockedCategory) {
+    (searchParams.get('category')?.split(',').filter(Boolean) || []).forEach(c =>
+      chips.push({ key: 'category', value: c, label: categoryLabel(c) })
+    );
+  }
+  (searchParams.get('brand')?.split(',').filter(Boolean) || []).forEach(b =>
+    chips.push({ key: 'brand', value: b, label: b })
+  );
+  if (searchParams.get('minPrice') || searchParams.get('maxPrice')) {
+    const min = searchParams.get('minPrice');
+    const max = searchParams.get('maxPrice');
+    chips.push({
+      key: 'price', value: '__price__',
+      label: `قیمت: ${min ? formatPrice(min) : '۰'} تا ${max ? formatPrice(max) : '∞'}`,
+    });
+  }
+  if (searchParams.get('minRating')) chips.push({ key: 'minRating', value: '__rating__', label: `${searchParams.get('minRating')}★ به بالا` });
+  if (searchParams.get('inStock') === 'true') chips.push({ key: 'inStock', value: '__stock__', label: 'فقط موجود' });
+  if (searchParams.get('isNew') === 'true') chips.push({ key: 'isNew', value: '__new__', label: 'جدید' });
+  if (searchParams.get('isBestseller') === 'true') chips.push({ key: 'isBestseller', value: '__best__', label: 'پرفروش' });
+  if (searchParams.get('search')) chips.push({ key: 'search', value: '__search__', label: `جستجو: ${searchParams.get('search')}` });
+
+  if (chips.length === 0) return null;
+
+  function removeChip(chip) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (chip.key === 'category' || chip.key === 'brand') {
+      const list = (params.get(chip.key)?.split(',').filter(Boolean) || []).filter(v => v !== chip.value);
+      if (list.length) params.set(chip.key, list.join(',')); else params.delete(chip.key);
+    } else if (chip.key === 'price') {
+      params.delete('minPrice'); params.delete('maxPrice');
+    } else {
+      params.delete(chip.key);
+    }
+    params.delete('page');
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2 mb-4">
+      {chips.map(chip => (
+        <button
+          key={`${chip.key}-${chip.value}`}
+          onClick={() => removeChip(chip)}
+          className="flex items-center gap-1.5 bg-card border border-line text-xs text-ink px-3 py-1.5 rounded-full hover:border-ember transition"
+        >
+          {chip.label} <span className="text-ash-dark">✕</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+---------------------------------
+src/components/product/AddToCartBox.js :
+
+'use client';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useCart } from '@/contexts/CartContext';
+import { formatPrice, discountPercent } from '@/lib/format';
+
+export default function AddToCartBox({ product }) {
+  const router = useRouter();
+  const { addItem } = useCart();
+  const [qty, setQty] = useState(1);
+  const [added, setAdded] = useState(false);
+  const outOfStock = !product.stock || product.stock <= 0;
+  const discount = discountPercent(product.price, product.oldPrice);
+
+  const handleAdd = () => {
+    addItem(product, qty);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 2000);
+  };
+
+  const handleBuyNow = () => {
+    addItem(product, qty);
+    router.push('/checkout');
+  };
+
+  return (
+    <div className="bg-panel border border-line rounded-card p-5 space-y-4">
+      <div className="flex items-baseline gap-3 font-mono">
+        {product.oldPrice > product.price && (
+          <>
+            <span className="text-ash-dark line-through text-sm">{formatPrice(product.oldPrice)}</span>
+            <span className="bg-ember/15 text-ember text-xs font-bold px-2 py-1 rounded">٪{discount.toLocaleString('fa-IR')} تخفیف</span>
+          </>
+        )}
+      </div>
+      <div className="text-2xl font-bold text-ink font-mono">{formatPrice(product.price)}</div>
+
+      {outOfStock ? (
+        <p className="text-ember text-sm font-bold">این محصول در حال حاضر ناموجود است</p>
+      ) : (
+        <>
+          <p className="text-leaf text-xs">✓ موجود در انبار ({product.stock.toLocaleString('fa-IR')} عدد)</p>
+
+          <div className="flex items-center gap-3">
+            <div className="flex items-center border border-line rounded-btn">
+              <button onClick={() => setQty(q => Math.max(1, q - 1))} className="w-9 h-9 text-ink hover:bg-card transition">−</button>
+              <span className="w-10 text-center text-ink text-sm">{qty.toLocaleString('fa-IR')}</span>
+              <button onClick={() => setQty(q => Math.min(product.stock, q + 1))} className="w-9 h-9 text-ink hover:bg-card transition">+</button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={handleBuyNow}
+              className="w-full bg-grape hover:bg-grape/80 text-white font-bold py-3 rounded-btn transition"
+            >
+              خرید سریع
+            </button>
+            <button
+              onClick={handleAdd}
+              className="w-full bg-card hover:bg-line text-ink font-bold py-3 rounded-btn transition"
+            >
+              {added ? '✓ به سبد اضافه شد' : 'افزودن به سبد خرید'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+---------------------------------
+src/components/product/FilterSidebar.js :
+
+'use client';
+// ============================================================
+// فیلتر محصولات — مهم‌ترین بخش UX این پروژه طبق خواسته‌ی کارفرما
+// ------------------------------------------------------------
+// طراحی:
+// - همه‌ی فیلترها توی URL query string ذخیره میشن (نه state
+//   داخلی تنها) → یعنی کاربر می‌تونه لینک نتیجه‌ی فیلترشده رو
+//   کپی/شیر کنه، دکمه‌ی back مرورگر درست کار می‌کنه، و گوگل هم
+//   می‌تونه صفحات فیلترشده رو (در صورت نیاز) ایندکس کنه.
+// - تغییر هر فیلتر بلافاصله اعمال میشه (بدون دکمه‌ی «اعمال فیلتر»)
+//   بجز محدوده‌ی قیمت که یه دکمه‌ی اعمال داره (چون تایپ عددی
+//   نباید هر keystroke یه navigation جدید بسازه).
+// - ردیف «فیلترهای فعال» بالای نتایج (توی خود صفحه‌ی products،
+//   نه اینجا) با dismiss chip، شفافیت کامل به کاربر میده که
+//   الان دقیقاً چی فیلتر شده.
+// ============================================================
+
+import { useState } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { CATEGORY_GROUPS } from '@/lib/categories';
+import { formatPrice } from '@/lib/format';
+
+const PRICE_PRESETS = [
+  { label: 'زیر ۵ میلیون', min: '', max: '5000000' },
+  { label: '۵ تا ۲۰ میلیون', min: '5000000', max: '20000000' },
+  { label: '۲۰ تا ۵۰ میلیون', min: '20000000', max: '50000000' },
+  { label: 'بالای ۵۰ میلیون', min: '50000000', max: '' },
+];
+
+export default function FilterSidebar({ facets, lockedCategory, onClose }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const selectedCategories = lockedCategory ? [lockedCategory] : (searchParams.get('category')?.split(',').filter(Boolean) || []);
+  const selectedBrands = searchParams.get('brand')?.split(',').filter(Boolean) || [];
+  const inStockOnly = searchParams.get('inStock') === 'true';
+  const isNewOnly = searchParams.get('isNew') === 'true';
+  const isBestsellerOnly = searchParams.get('isBestseller') === 'true';
+  const minRating = searchParams.get('minRating') || '';
+
+  const [minPrice, setMinPrice] = useState(searchParams.get('minPrice') || '');
+  const [maxPrice, setMaxPrice] = useState(searchParams.get('maxPrice') || '');
+
+  // تابع عمومی برای آپدیت یه پارامتر توی URL (و برگردوندن page به ۱)
+  function updateParam(key, value) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === null || value === '' || value === false) params.delete(key);
+    else params.set(key, value);
+    params.delete('page');
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  function toggleInList(key, value, currentList) {
+    const next = currentList.includes(value)
+      ? currentList.filter(v => v !== value)
+      : [...currentList, value];
+    updateParam(key, next.join(','));
+  }
+
+  function applyPriceRange(min = minPrice, max = maxPrice) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (min) params.set('minPrice', min); else params.delete('minPrice');
+    if (max) params.set('maxPrice', max); else params.delete('maxPrice');
+    params.delete('page');
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  function clearAll() {
+    router.push(pathname, { scroll: false });
+    setMinPrice(''); setMaxPrice('');
+  }
+
+  const hasActiveFilters = selectedCategories.length > (lockedCategory ? 1 : 0) || selectedBrands.length || inStockOnly || isNewOnly || isBestsellerOnly || minRating || minPrice || maxPrice;
+
+  return (
+    <aside className="w-full lg:w-64 shrink-0 space-y-6">
+      {hasActiveFilters && (
+        <button onClick={clearAll} className="text-xs text-ember hover:underline">
+          ✕ پاک کردن همه‌ی فیلترها
+        </button>
+      )}
+
+      {/* دسته‌بندی — فقط وقتی lockedCategory نداریم نشون بده (توی صفحه‌ی دسته، خودِ دسته مشخصه) */}
+      {!lockedCategory && (
+        <FilterSection title="دسته‌بندی">
+          <div className="max-h-64 overflow-y-auto space-y-3 pl-1">
+            {CATEGORY_GROUPS.map(group => (
+              <div key={group.label}>
+                <p className="text-[11px] text-ash-dark mb-1">{group.label}</p>
+                {group.items.map(item => (
+                  <CheckboxRow
+                    key={item.slug}
+                    label={item.label}
+                    checked={selectedCategories.includes(item.slug)}
+                    onChange={() => toggleInList('category', item.slug, selectedCategories)}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </FilterSection>
+      )}
+
+      {/* برند — از facets که سرور بر اساس محصولات موجود محاسبه کرده */}
+      {facets?.brands?.length > 0 && (
+        <FilterSection title="برند">
+          <div className="max-h-56 overflow-y-auto space-y-1.5 pl-1">
+            {facets.brands.map(brand => (
+              <CheckboxRow
+                key={brand}
+                label={brand}
+                checked={selectedBrands.includes(brand)}
+                onChange={() => toggleInList('brand', brand, selectedBrands)}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      )}
+
+      {/* محدوده قیمت */}
+      <FilterSection title="محدوده قیمت (تومان)">
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {PRICE_PRESETS.map(p => (
+            <button
+              key={p.label}
+              onClick={() => { setMinPrice(p.min); setMaxPrice(p.max); applyPriceRange(p.min, p.max); }}
+              className="text-[11px] bg-card text-ash hover:text-ink px-2.5 py-1.5 rounded-btn transition"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={minPrice}
+            onChange={e => setMinPrice(e.target.value)}
+            placeholder="از"
+            className="w-full bg-night border border-line rounded-btn px-2 py-1.5 text-xs text-ink focus:border-grape transition"
+          />
+          <span className="text-ash-dark text-xs">تا</span>
+          <input
+            type="number"
+            value={maxPrice}
+            onChange={e => setMaxPrice(e.target.value)}
+            placeholder="تا"
+            className="w-full bg-night border border-line rounded-btn px-2 py-1.5 text-xs text-ink focus:border-grape transition"
+          />
+        </div>
+        <button
+          onClick={() => applyPriceRange()}
+          className="w-full mt-2 text-xs bg-card hover:bg-line text-ink py-1.5 rounded-btn transition"
+        >
+          اعمال محدوده قیمت
+        </button>
+        {facets?.minPrice != null && (
+          <p className="text-[10px] text-ash-dark mt-2">
+            بازه‌ی موجود: {formatPrice(facets.minPrice)} تا {formatPrice(facets.maxPrice)}
+          </p>
+        )}
+      </FilterSection>
+
+      {/* امتیاز */}
+      <FilterSection title="حداقل امتیاز">
+        <div className="flex gap-2">
+          {[4, 3, 2].map(r => (
+            <button
+              key={r}
+              onClick={() => updateParam('minRating', minRating === String(r) ? null : r)}
+              className={`text-xs px-2.5 py-1.5 rounded-btn transition ${
+                minRating === String(r) ? 'bg-amber text-white font-bold' : 'bg-card text-ash hover:text-ink'
+              }`}
+            >
+              {r.toLocaleString('fa-IR')}★ به بالا
+            </button>
+          ))}
+        </div>
+      </FilterSection>
+
+      {/* سایر ویژگی‌ها */}
+      <FilterSection title="سایر">
+        <CheckboxRow label="فقط کالاهای موجود" checked={inStockOnly} onChange={() => updateParam('inStock', inStockOnly ? null : 'true')} />
+        <CheckboxRow label="محصولات جدید" checked={isNewOnly} onChange={() => updateParam('isNew', isNewOnly ? null : 'true')} />
+        <CheckboxRow label="پرفروش‌ها" checked={isBestsellerOnly} onChange={() => updateParam('isBestseller', isBestsellerOnly ? null : 'true')} />
+      </FilterSection>
+
+      {/* فقط توی حالت کشوی موبایل نشون داده میشه (وقتی onClose پاس داده شده) */}
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="w-full bg-grape hover:bg-grape/80 text-white font-bold py-3 rounded-btn transition sticky bottom-2"
+        >
+          نمایش نتایج
+        </button>
+      )}
+    </aside>
+  );
+}
+
+function FilterSection({ title, children }) {
+  return (
+    <div className="bg-panel border border-line rounded-card p-4">
+      <h3 className="text-sm font-bold text-ink mb-3">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function CheckboxRow({ label, checked, onChange }) {
+  return (
+    <label className="flex items-center gap-2 py-1 text-sm text-ash hover:text-ink transition cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={onChange} className="accent-grape w-4 h-4 shrink-0" />
+      <span className="line-clamp-1">{label}</span>
+    </label>
+  );
+}
+---------------------------------
+src/components/product/ProductCard.js :
+
+import Link from 'next/link';
+import StarRating from '@/components/common/StarRating';
+import { formatPrice, discountPercent } from '@/lib/format';
+import { productUrl } from '@/lib/seo';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
+
+// کارت محصول — توی همه‌ی صفحات (خانه، لیست، مرتبط) استفاده میشه.
+// همچنان Server Component ساده‌ست (بدون state/جاوااسکریپت اضافه)؛
+// همه‌ی جلوه‌های هاور فقط با CSS/Tailwind پیاده شدن تا صفحات لیست
+// بزرگ سبک بمونن.
+export default function ProductCard({ product }) {
+  const discount = discountPercent(product.price, product.oldPrice);
+  const outOfStock = !product.stock || product.stock <= 0;
+
+  return (
+    <Link
+      href={productUrl(product)}
+      className="group relative flex flex-col bg-panel border border-line rounded-card overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-transparent hover:shadow-[0_0_0_1px_rgba(37,99,235,0.5),0_20px_35px_-15px_rgba(37,99,235,0.35)]"
+    >
+      <div className="relative aspect-square bg-card overflow-hidden">
+        {/* درخشش گرادیانی گریپ/لاگون پشت تصویر — فقط موقع هاور دیده میشه، امضای بصری برند */}
+        <div className="absolute inset-0 bg-gradient-to-br from-grape/25 via-transparent to-lagoon/25 opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-[1]" />
+
+        {product.images?.[0] ? (
+          <img
+            src={`${API_BASE}${product.images[0]}`}
+            alt={product.name}
+            className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 ${outOfStock ? 'grayscale opacity-50' : ''}`}
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-5xl text-ash-dark">📦</div>
+        )}
+
+        {/* نشان‌های راست‌بالا — استایل شیشه‌ای با سایه‌ی رنگی */}
+        <div className="absolute top-2.5 right-2.5 flex flex-col items-end gap-1.5 z-10">
+          {product.isNew && (
+            <span className="flex items-center gap-1 bg-lagoon/90 backdrop-blur-sm text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full shadow-lg shadow-lagoon/30">
+              ✦ جدید
+            </span>
+          )}
+          {product.isBestseller && (
+            <span className="flex items-center gap-1 bg-amber/90 backdrop-blur-sm text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full shadow-lg shadow-amber/30">
+              🔥 پرفروش
+            </span>
+          )}
+        </div>
+
+        {/* نشان تخفیف — چپ‌بالا، پررنگ‌تر از بقیه چون مهم‌ترین محرک خریده */}
+        {discount > 0 && !outOfStock && (
+          <div className="absolute top-2.5 left-2.5 z-10">
+            <span className="bg-ember text-white text-xs font-extrabold px-2.5 py-1 rounded-full shadow-lg shadow-ember/40">
+              ٪{discount.toLocaleString('fa-IR')}−
+            </span>
+          </div>
+        )}
+
+        {outOfStock && (
+          <div className="absolute inset-0 bg-night/50 backdrop-blur-[2px] flex items-center justify-center z-10">
+            <span className="bg-night/85 border border-line text-ink text-xs font-bold px-4 py-2 rounded-full">
+              ناموجود
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="relative p-3.5 flex flex-col gap-1.5 flex-1">
+        <span className="text-[11px] text-ash-dark tracking-wide">{product.brand}</span>
+        <h3 className="text-sm text-ink leading-6 line-clamp-2 flex-1 group-hover:text-grape-light transition-colors">
+          {product.name}
+        </h3>
+
+        {product.reviewCount > 0 && (
+          <div className="flex items-center gap-1.5">
+            <StarRating rating={product.rating} size="text-[11px]" />
+            <span className="text-[10px] text-ash-dark">({product.reviewCount.toLocaleString('fa-IR')})</span>
+          </div>
+        )}
+
+        <div className="flex flex-col mt-1.5 pt-2.5 border-t border-line/60 font-mono">
+          {product.oldPrice > product.price && (
+            <span className="text-[11px] text-ash-dark line-through">{formatPrice(product.oldPrice)}</span>
+          )}
+          <span className="text-ink font-bold text-[15px]">{formatPrice(product.price)}</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+---------------------------------
+src/components/product/ProductGallery.js :
+
+'use client';
+import { useState } from 'react';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
+
+// گالری تصاویر محصول — تصویر اصلی بزرگ + ردیف تامبنیل‌ها.
+export default function ProductGallery({ images = [], name }) {
+  const [active, setActive] = useState(0);
+
+  if (!images.length) {
+    return (
+      <div className="aspect-square bg-card rounded-card flex items-center justify-center text-6xl text-ash-dark">
+        📦
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="aspect-square bg-card rounded-card overflow-hidden mb-3 border border-line">
+        <img
+          src={`${API_BASE}${images[active]}`}
+          alt={name}
+          className="w-full h-full object-contain"
+        />
+      </div>
+      {images.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {images.map((img, i) => (
+            <button
+              key={img}
+              onClick={() => setActive(i)}
+              className={`shrink-0 w-16 h-16 rounded-btn overflow-hidden border-2 transition ${
+                i === active ? 'border-grape' : 'border-line opacity-70 hover:opacity-100'
+              }`}
+            >
+              <img src={`${API_BASE}${img}`} alt="" className="w-full h-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+---------------------------------
+src/components/product/ProductSpecs.js :
+
+// جدول مشخصات فنی — عمداً با فونت مونو نمایش داده میشه تا حس
+// «برگه‌ی تخصصی/دیتاشیت» بده، متفاوت از فونت معمولی بقیه‌ی صفحه.
+// این همون امضای طراحی مخصوص بخش‌های تکنیکال سایته.
+export default function ProductSpecs({ specs = [] }) {
+  if (!specs.length) return null;
+
+  return (
+    <div className="bg-panel border border-line rounded-card overflow-hidden">
+      <h2 className="font-bold text-ink p-4 border-b border-line">مشخصات فنی</h2>
+      <table className="w-full font-mono text-sm">
+        <tbody>
+          {specs.map((spec, i) => (
+            <tr key={i} className={i % 2 === 0 ? 'bg-card/40' : ''}>
+              <td className="p-3 text-ash w-1/3 align-top">{spec.key}</td>
+              <td className="p-3 text-ink">{spec.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+---------------------------------
+src/components/product/ProductToolbar.js :
+
+'use client';
+// ============================================================
+// نوار ابزار بالای گرید محصولات
+// ------------------------------------------------------------
+// - سمت راست: تعداد نتایج
+// - سمت چپ: مرتب‌سازی (دسکتاپ) + دکمه‌ی «فیلترها» که توی موبایل
+//   یه کشوی تمام‌صفحه با FilterSidebar باز می‌کنه (چون سایدبار
+//   ثابت توی موبایل جا نمیشه / تجربه‌ی خوبی نیست)
+// ============================================================
+
+import { useState } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import FilterSidebar from './FilterSidebar';
+
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'جدیدترین' },
+  { value: 'price-asc', label: 'ارزان‌ترین' },
+  { value: 'price-desc', label: 'گران‌ترین' },
+  { value: 'bestselling', label: 'پرفروش‌ترین' },
+  { value: 'rating', label: 'بهترین امتیاز' },
+];
+
+export default function ProductToolbar({ total, facets, lockedCategory }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const sort = searchParams.get('sort') || 'newest';
+
+  function setSort(value) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('sort', value);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+        <p className="text-sm text-ash">
+          <span className="text-ink font-bold">{total.toLocaleString('fa-IR')}</span> محصول یافت شد
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="lg:hidden text-sm bg-panel border border-line text-ink px-3 py-2 rounded-btn"
+          >
+            ⚙️ فیلترها
+          </button>
+          <select
+            value={sort}
+            onChange={e => setSort(e.target.value)}
+            className="bg-panel border border-line rounded-btn px-3 py-2 text-sm text-ink focus:border-grape transition"
+          >
+            {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* کشوی فیلتر موبایل */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-[70] lg:hidden">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setDrawerOpen(false)} />
+          <div className="absolute bottom-0 right-0 left-0 max-h-[85vh] overflow-y-auto bg-night rounded-t-2xl p-4 space-y-4">
+            <div className="flex items-center justify-between sticky top-0 bg-night pb-2">
+              <span className="font-bold text-ink">فیلترها</span>
+              <button onClick={() => setDrawerOpen(false)} className="text-ash text-2xl leading-none" aria-label="بستن">✕</button>
+            </div>
+            <FilterSidebar facets={facets} lockedCategory={lockedCategory} onClose={() => setDrawerOpen(false)} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+---------------------------------
+src/components/product/RelatedProducts.js :
+
+import ProductCard from './ProductCard';
+
+export default function RelatedProducts({ products = [] }) {
+  if (!products.length) return null;
+
+  return (
+    <section className="mt-12">
+      <h2 className="text-lg font-bold text-ink mb-4">محصولات مرتبط</h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {products.map(p => <ProductCard key={p.id} product={p} />)}
+      </div>
+    </section>
+  );
+}
+---------------------------------
+src/components/product/ReviewsSection.js :
+
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/api';
+import { formatDateShort } from '@/lib/format';
+import StarRating from '@/components/common/StarRating';
+
+export default function ReviewsSection({
+  productId,
+  initialReviews = [],
+}) {
+  const { user } = useAuth();
+
+  const [reviews, setReviews] = useState(initialReviews);
+  const [showForm, setShowForm] = useState(false);
+
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+
+  // ============================================================
+  // ثبت نظر
+  // ============================================================
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    // پاک کردن خطای قبلی
+    setError('');
+
+    // بررسی لاگین
+    if (!user) {
+      setError('برای ثبت نظر ابتدا وارد حساب کاربری شوید.');
+      return;
+    }
+
+    // بررسی متن
+    const trimmedComment = comment.trim();
+
+    if (!trimmedComment) {
+      setError('لطفاً متن نظر را وارد کنید.');
+      return;
+    }
+
+    if (trimmedComment.length < 10) {
+      setError('حداقل ۱۰ کاراکتر بنویسید.');
+      return;
+    }
+
+    // بررسی امتیاز
+    if (rating < 1 || rating > 5) {
+      setError('لطفاً یک امتیاز بین ۱ تا ۵ انتخاب کنید.');
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const response = await api.submitProductReview(productId, {
+        name: user.name,
+        rating: rating,
+        text: trimmedComment,
+      });
+
+      console.log('Review submitted:', response);
+
+      // چون نظر pending است، فعلاً به لیست نظرات اضافه نمی‌کنیم
+      // تا قبل از تایید ادمین در سایت نمایش داده نشود.
+
+      setSubmitted(true);
+      setShowForm(false);
+
+      setComment('');
+      setRating(5);
+    } catch (err) {
+      console.error('Submit review error:', err);
+
+      setError(
+        err?.message ||
+        'خطایی هنگام ثبت نظر رخ داد. لطفاً دوباره تلاش کنید.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  // ============================================================
+  // نمایش
+  // ============================================================
+  return (
+    <div className="bg-panel border border-line rounded-card p-5 md:p-6">
+      {/* ========================================================
+          Header
+      ======================================================= */}
+      <div className="flex items-center justify-between mb-4">
+
+        <h2 className="font-bold text-ink text-lg">
+          نظرات خریداران (
+          {reviews.length.toLocaleString('fa-IR')}
+          )
+        </h2>
+        {user ? (
+          !submitted && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowForm((prev) => !prev);
+                setError('');
+              }}
+              className="text-sm text-grape-light hover:underline"
+            >
+              {showForm ? 'بستن' : '+ ثبت نظر'}
+            </button>
+          )
+        ) : (
+          <Link
+            href="/login"
+            className="text-sm text-grape-light hover:underline"
+          >
+            برای ثبت نظر وارد شوید
+          </Link>
+        )}
+      </div>
+      {/* ========================================================
+          پیام موفقیت
+      ======================================================== */}
+      {submitted && (
+        <div className="bg-leaf/10 text-leaf text-sm px-4 py-3 rounded-btn mb-4">
+          نظر شما با موفقیت ثبت شد و پس از تأیید ادمین
+          در سایت نمایش داده می‌شود. ممنون از بازخوردتون 🙏
+        </div>
+      )}
+      {/* ========================================================
+          فرم ثبت نظر
+      ======================================================== */}
+      {showForm && !submitted && (
+        <form
+          onSubmit={handleSubmit}
+          className="bg-card rounded-btn p-4 mb-5 space-y-4"
+        >
+          {/* Error */}
+          {error && (
+            <div className="bg-ember/10 text-ember text-xs px-3 py-2 rounded-btn">
+              {error}
+            </div>
+          )}
+          {/* Rating */}
+          <div>
+            <p className="text-xs text-ash mb-2">
+              امتیاز شما
+            </p>
+            <div
+              className="flex gap-1"
+              dir="ltr"
+            >
+              {[1, 2, 3, 4, 5].map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRating(r)}
+                  disabled={submitting}
+                  aria-label={`امتیاز ${r} از 5`}
+                  className={`
+                    text-2xl
+                    transition
+                    hover:scale-110
+                    disabled:opacity-50
+                    ${r <= rating
+                      ? 'text-amber'
+                      : 'text-line'
+                    }
+                  `}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Comment */}
+          <div>
+            <p className="text-xs text-ash mb-2">
+              متن نظر
+            </p>
+            <textarea
+              value={comment}
+              onChange={(e) => {
+                setComment(e.target.value);
+
+                if (error) {
+                  setError('');
+                }
+              }}
+              required
+              minLength={10}
+              rows={4}
+              disabled={submitting}
+              placeholder="تجربه‌ی استفاده‌تون از این محصول رو بنویسید..."
+              className="
+                w-full
+                bg-night
+                border
+                border-line
+                rounded-btn
+                px-3
+                py-2
+                text-sm
+                text-ink
+                placeholder:text-ash-dark
+                focus:border-grape
+                transition
+                resize-none
+                disabled:opacity-50
+              "
+            />
+            <div className="text-[11px] text-ash-dark mt-1">
+              حداقل ۱۰ کاراکتر
+            </div>
+          </div>
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="
+              bg-grape
+              hover:bg-grape/80
+              text-white
+              text-sm
+              font-bold
+              px-5
+              py-2
+              rounded-btn
+              transition
+              disabled:opacity-50
+              disabled:cursor-not-allowed
+            "
+          >
+            {submitting
+              ? 'در حال ارسال...'
+              : 'ثبت نظر'}
+          </button>
+        </form>
+      )}
+      {/* ========================================================
+          Reviews List
+      ======================================================== */}
+      {reviews.length === 0 ? (
+        <p className="text-sm text-ash">
+          هنوز نظری برای این محصول ثبت نشده.
+          اولین نفر باشید!
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {reviews.map((review) => (
+            <div
+              key={review.id || review._id}
+              className="
+                border-t
+                border-line
+                pt-4
+                first:border-t-0
+                first:pt-0
+              "
+            >
+              {/* User + Date */}
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm text-ink font-bold">
+                  {review.name ||
+                    review.user?.name ||
+                    'کاربر تک‌نبولا'}
+                </span>
+                {review.createdAt && (
+                  <span className="text-xs text-ash-dark">
+                    {formatDateShort(review.createdAt)}
+                  </span>
+                )}
+              </div>
+              {/* Rating */}
+              <StarRating
+                rating={review.rating}
+              />
+              {/* Text */}
+              <p className="text-sm text-ash mt-2 leading-6">
+                {review.text || review.comment}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+---------------------------------
+src/context/AuthContext.js :
+
+'use client';
+// ============================================================
+// احراز هویت — ورود با کد یک‌بارمصرف (OTP)
+// ------------------------------------------------------------
+// این Context فقط از endpoint هایی استفاده می‌کنه که از قبل توی
+// بک‌اند وجود دارن (همون‌هایی که پنل ادمین هم برای لاگین استفاده
+// می‌کنه: /auth/send-otp ، /auth/verify-otp ، /auth/me).
+// یعنی هیچ تغییری توی بک‌اند لازم نیست.
+//
+// 📌 درباره‌ی SMS.ir: ارسال واقعی پیامک، مسئولیت بک‌انده (داخل
+// روت /auth/send-otp). اینجا فقط UI جریان ورود رو می‌سازیم. تا
+// وقتی توکن SMS.ir رو وصل نکردید، هر رفتار تستی که بک‌اند فعلاً
+// برای OTP داره (مثلاً چاپ کد توی کنسول یا یه کد ثابت) همینجوری
+// از همین صفحه کار می‌کنه — وقتی SMS.ir رو وصل کردیم، این فرانت
+// کوچیک‌ترین تغییری لازم نداره، چون فقط از endpoint موجود استفاده
+// می‌کنه.
+// ============================================================
+
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { api, getToken, setToken } from '@/lib/api';
+
+const AuthContext = createContext(null);
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) { setLoading(false); return; }
+
+    api.getMe()
+      .then(data => setUser(data.user))
+      .catch(() => setToken(null)) // توکن نامعتبر/منقضی‌شده
+      .finally(() => setLoading(false));
+  }, []);
+
+  const login = useCallback((token, userData) => {
+    setToken(token);
+    setUser(userData);
+  }, []);
+
+  const logout = useCallback(() => {
+    setToken(null);
+    setUser(null);
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ user, loading, login, logout, isAuthenticated: !!user }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth باید داخل AuthProvider استفاده بشه');
+  return ctx;
+}
+---------------------------------
+src/context/CartContext.js :
+
+'use client';
+// ============================================================
+// سبد خرید — سمت کلاینت، ذخیره در localStorage
+// ------------------------------------------------------------
+// سبد خرید سمت سرور نگه‌داری نمیشه (بک‌اند فعلاً چنین چیزی نداره
+// و نیازی هم نیست) — فقط موقع «نهایی کردن خرید» توی صفحه‌ی
+// چک‌اوت، کل سبد به شکل یه سفارش به POST /api/orders فرستاده
+// میشه. این دقیقاً همون الگوی استانداردیه که اکثر فروشگاه‌های
+// آنلاین استفاده می‌کنن.
+// ============================================================
+
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+
+const CartContext = createContext(null);
+const STORAGE_KEY = 'technubela_cart';
+
+export function CartProvider({ children }) {
+  const [items, setItems] = useState([]);
+  const [hydrated, setHydrated] = useState(false);
+
+  // خوندن سبد ذخیره‌شده هنگام بارگذاری اولیه (فقط سمت کلاینت)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setItems(JSON.parse(saved));
+    } catch {
+      // اگه داده خراب بود، سبد خالی شروع میشه
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
+
+  // ذخیره‌ی خودکار هر تغییر توی سبد
+  useEffect(() => {
+    if (hydrated) localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }, [items, hydrated]);
+
+  const addItem = useCallback((product, quantity = 1) => {
+    setItems(prev => {
+      const existing = prev.find(i => i.productId === product.id);
+      if (existing) {
+        const newQty = Math.min(existing.quantity + quantity, product.stock ?? 99);
+        return prev.map(i => i.productId === product.id ? { ...i, quantity: newQty } : i);
+      }
+      return [...prev, {
+        productId: product.id,
+        name: product.name,
+        image: product.images?.[0] || '',
+        price: product.price,
+        stock: product.stock,
+        quantity: Math.min(quantity, product.stock ?? 99),
+      }];
+    });
+  }, []);
+
+  const removeItem = useCallback((productId) => {
+    setItems(prev => prev.filter(i => i.productId !== productId));
+  }, []);
+
+  const updateQuantity = useCallback((productId, quantity) => {
+    setItems(prev => prev.map(i => {
+      if (i.productId !== productId) return i;
+      const clamped = Math.max(1, Math.min(quantity, i.stock ?? 99));
+      return { ...i, quantity: clamped };
+    }));
+  }, []);
+
+  const clearCart = useCallback(() => setItems([]), []);
+
+  const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const count = items.reduce((sum, i) => sum + i.quantity, 0);
+
+  return (
+    <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clearCart, subtotal, count, hydrated }}>
+      {children}
+    </CartContext.Provider>
+  );
+}
+
+export function useCart() {
+  const ctx = useContext(CartContext);
+  if (!ctx) throw new Error('useCart باید داخل CartProvider استفاده بشه');
+  return ctx;
+}
+---------------------------------
+src/lib/api.js :
+
+// ============================================================
+// API CLIENT — سمت فروشگاه (نه پنل ادمین)
+// ------------------------------------------------------------
+// همون الگوی request() پنل ادمین، با این تفاوت که توکن از
+// localStorage با کلید 'technubela_token' خونده میشه (مخصوص
+// کاربر مهمان/مشتری، جدا از سشن ادمین).
+//
+// ⚠️ نکته‌ی خیلی مهم درباره‌ی endpoint هایی که علامت (پیشنهادی)
+// دارن: من کد فعلی همه‌ی روت‌های بک‌اند رو ندیدم (فقط چندتاشون
+// رو قبلاً با هم دیدیم: products, blog, auth, reviews). برای
+// بقیه (فیلتر پیشرفته‌ی محصولات، سفارش‌ها، پرداخت) یه پیاده‌سازی
+// پیشنهادی توی پوشه‌ی backend-additions/ گذاشتم. اگه از قبل
+// نسخه‌ی دیگه‌ای داری، یا جایگزینش کن یا این فرانت رو با
+// endpoint واقعی‌ت تطبیق بده.
+// ============================================================
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const TOKEN_KEY = 'technubela_token';
+
+export function getToken() {
+  if (typeof window === 'undefined') return null; // سمت سرور (SSR) توکن نداریم
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token) {
+  if (typeof window === 'undefined') return;
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+async function request(path, options = {}) {
+  const token = getToken();
+  const headers = {
+    ...(!(options.body instanceof FormData) && { 'Content-Type': 'application/json' }),
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...options.headers,
+  };
+
+  const body = options.body && !(options.body instanceof FormData) && typeof options.body !== 'string'
+    ? JSON.stringify(options.body)
+    : options.body;
+
+  const res = await fetch(`${API_URL}${path}`, { ...options, headers, body });
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.error || 'خطای سرور');
+  }
+  return data;
+}
+
+export const api = {
+  // ====== Products ======
+  // params یه رشته‌ی query string آماده‌ست، مثلاً:
+  // '?category=gpu&brand=Asus,MSI&minPrice=1000000&maxPrice=50000000&sort=price-asc&page=1'
+  getProducts: (params = '') => request(`/products${params}`),
+  getProduct: (id) => request(`/products/${id}`),
+  // (پیشنهادی) برای پر کردن گزینه‌های فیلتر (برندهای موجود، بازه‌ی قیمت) بدون نیاز به گرفتن کل محصولات
+  getProductFacets: (params = '') => request(`/products/facets${params}`),
+  getProductReviews: (id) => request(`/products/${id}/reviews`),
+  // (پیشنهادی) ثبت نظر توسط کاربر لاگین‌کرده — با وضعیت pending تا ادمین تاییدش کنه
+  submitProductReview: (id, data) => request(`/products/${id}/reviews`, { method: 'POST', body: data }),
+
+  // ====== Blog ======
+  getBlogPosts: (params = '') => request(`/blog${params}`),
+  getBlogPost: (slug) => request(`/blog/${slug}`),
+
+  // ====== Auth (OTP) — همون endpoint هایی که پنل ادمین هم استفاده می‌کنه ======
+  sendOTP: (phone) => request('/auth/send-otp', { method: 'POST', body: { phone } }),
+  verifyOTP: (phone, code) => request('/auth/verify-otp', { method: 'POST', body: { phone, code } }),
+  getMe: () => request('/auth/me'),
+
+  // ====== Orders (پیشنهادی) ======
+  // نکته: /orders/my/:id (نه /orders/:id) عمداً انتخاب شده تا با
+  // روت احتمالی GET /orders/:id که توی پنل ادمین (با requireAdmin)
+  // از قبل وجود داره تداخل نکنه — دو تا endpoint کاملاً جدا از هم.
+  createOrder: (data) => request('/orders', { method: 'POST', body: data }),
+  getMyOrders: () => request('/orders/my'),
+  getMyOrder: (id) => request(`/orders/my/${id}`),
+
+  // ====== Payment — زرین‌پال (پیشنهادی، جزئیات کامل توی backend-additions/paymentRoutes.js) ======
+  requestPayment: (orderId) => request('/payment/request', { method: 'POST', body: { orderId } }),
+  verifyPayment: (orderId, authority, status) =>
+    request('/payment/verify', { method: 'POST', body: { orderId, authority, status } }),
+};
+---------------------------------
+src/lib/buildProductQuery.js :
+
+// ============================================================
+// تبدیل searchParams صفحه به query string برای api.getProducts
+// (هم توی /products و هم /category/[slug] استفاده میشه تا
+// منطق فیلتر یه‌جا نگه داشته بشه)
+// ============================================================
+export function buildProductQuery(searchParams, { category, limit = 24 } = {}) {
+  const params = new URLSearchParams();
+
+  const categoryValue = category || searchParams.category;
+  if (categoryValue) params.set('category', categoryValue);
+  if (searchParams.brand) params.set('brand', searchParams.brand);
+  if (searchParams.minPrice) params.set('minPrice', searchParams.minPrice);
+  if (searchParams.maxPrice) params.set('maxPrice', searchParams.maxPrice);
+  if (searchParams.minRating) params.set('minRating', searchParams.minRating);
+  if (searchParams.inStock) params.set('inStock', searchParams.inStock);
+  if (searchParams.isNew) params.set('isNew', searchParams.isNew);
+  if (searchParams.isBestseller) params.set('isBestseller', searchParams.isBestseller);
+  if (searchParams.search) params.set('search', searchParams.search);
+  params.set('sort', searchParams.sort || 'newest');
+  params.set('page', searchParams.page || '1');
+  params.set('limit', String(limit));
+
+  return `?${params.toString()}`;
+}
+---------------------------------
+src/lib/categories.js :
+
+// ============================================================
+// تاکسونومی دسته‌بندی‌ها
+// ------------------------------------------------------------
+// توی بک‌اند، Product.category صرفاً یه رشته‌ی آزاده (نه رفرنس
+// به یه مدل Category جدا) — طبق نمونه‌ی پنل ادمین، مقداری مثل
+// 'gpu' توش ذخیره میشه. پس این فایل تنها منبع مرجع نگاشت
+// slug ها به برچسب فارسی، آیکون، و گروه‌بندیه، و همه‌جای فرانت
+// (مگامنو، فوتر، فیلتر محصولات، متادیتای صفحه‌ی دسته) از همینجا
+// می‌خونن. اگه بعداً خواستید یه دسته اضافه/حذف کنید، فقط همینجا
+// رو ویرایش کنید — چیزی توی بک‌اند لازم نیست عوض بشه.
+//
+// ⚠️ نکته: چون category توی بک‌اند آزاده (نه enum)، وقتی محصول
+// جدید توی پنل ادمین ثبت می‌کنید، دقیقاً همین مقادیر slug (ستون
+// value پایین) رو توی فیلد «دسته‌بندی» وارد کنید تا محصول درست
+// زیر همون دسته توی فروشگاه نمایش داده بشه.
+// ============================================================
+
+export const CATEGORY_GROUPS = [
+  {
+    label: 'قطعات کامپیوتر',
+    items: [
+      { slug: 'gpu', label: 'کارت گرافیک', icon: '🎮' },
+      { slug: 'cpu', label: 'پردازنده (CPU)', icon: '🧠' },
+      { slug: 'motherboard', label: 'مادربرد', icon: '🔌' },
+      { slug: 'ram', label: 'رم', icon: '💾' },
+      { slug: 'storage', label: 'هارد و SSD', icon: '💿' },
+      { slug: 'psu', label: 'منبع تغذیه', icon: '🔋' },
+      { slug: 'case', label: 'کیس', icon: '🖥️' },
+      { slug: 'cooling', label: 'خنک‌کننده و فن', icon: '❄️' },
+    ],
+  },
+  {
+    label: 'جانبی کامپیوتر',
+    items: [
+      { slug: 'monitor', label: 'مانیتور', icon: '🖥️' },
+      { slug: 'keyboard', label: 'کیبورد', icon: '⌨️' },
+      { slug: 'mouse', label: 'ماوس', icon: '🖱️' },
+      { slug: 'audio', label: 'هدست و اسپیکر', icon: '🎧' },
+      { slug: 'webcam', label: 'وبکم', icon: '📷' },
+      { slug: 'mousepad', label: 'پد ماوس', icon: '▭' },
+    ],
+  },
+  {
+    label: 'گجت‌های کاربردی',
+    items: [
+      { slug: 'hub-adapter', label: 'هاب و تبدیل', icon: '🔗' },
+      { slug: 'external-storage', label: 'هارد اکسترنال و فلش', icon: '💽' },
+      { slug: 'charger-powerbank', label: 'شارژر و پاوربانک', icon: '🔌' },
+      { slug: 'mobile-accessories', label: 'لوازم جانبی موبایل', icon: '📱' },
+      { slug: 'smart-gadgets', label: 'گجت هوشمند', icon: '⌚' },
+      { slug: 'cables', label: 'کابل و رابط', icon: '🔗' },
+    ],
+  },
+  {
+    label: 'لپ‌تاپ و آماده',
+    items: [
+      { slug: 'laptop', label: 'لپ‌تاپ', icon: '💻' },
+      { slug: 'prebuilt-pc', label: 'کامپیوتر آماده', icon: '🖥️' },
+    ],
+  },
+];
+
+/** لیست تخت همه‌ی دسته‌ها (بدون گروه‌بندی) — برای فیلتر و lookup سریع */
+export const ALL_CATEGORIES = CATEGORY_GROUPS.flatMap(g => g.items);
+
+/** گرفتن برچسب فارسی از روی slug، با fallback به خود slug اگه پیدا نشد */
+export function categoryLabel(slug) {
+  return ALL_CATEGORIES.find(c => c.slug === slug)?.label || slug;
+}
+
+export function categoryIcon(slug) {
+  return ALL_CATEGORIES.find(c => c.slug === slug)?.icon || '📦';
+}
+---------------------------------
+src/lib/format.js :
+
+// ============================================================
+// توابع فرمت‌دهی — قیمت و تاریخ
+// ------------------------------------------------------------
+// تاریخ‌ها با toLocaleDateString('fa-IR') نمایش داده میشن.
+// این متد built-in جاوااسکریپته و به‌صورت خودکار تاریخ رو به
+// تقویم شمسی (جلالی) و اعداد فارسی تبدیل می‌کنه — دقیقاً همون
+// روشی که توی پنل ادمین هم استفاده کردیم، بدون نیاز به کتابخونه‌ی
+// جانبی توی فرانت (برخلاف بک‌اند که برای گروه‌بندی دقیق ماهانه
+// از jalaali-js استفاده کردیم).
+// ============================================================
+
+/** قیمت رو با جداکننده‌ی هزارگان فارسی + "تومان" نمایش میده. مثلاً: ۱٬۲۵۰٬۰۰۰ تومان */
+export function formatPrice(amount) {
+  if (amount === null || amount === undefined || isNaN(amount)) return '—';
+  return `${Number(amount).toLocaleString('fa-IR')} تومان`;
+}
+
+/** عدد ساده با اعداد فارسی (بدون واحد) — برای تعداد، امتیاز و غیره */
+export function formatNumber(n) {
+  if (n === null || n === undefined || isNaN(n)) return '۰';
+  return Number(n).toLocaleString('fa-IR');
+}
+
+/** تاریخ کامل شمسی، مثلاً: ۱۸ مرداد ۱۴۰۵ */
+export function formatDate(date) {
+  if (!date) return '';
+  return new Date(date).toLocaleDateString('fa-IR', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+/** تاریخ کوتاه شمسی، مثلاً: ۱۴۰۵/۵/۱۸ */
+export function formatDateShort(date) {
+  if (!date) return '';
+  return new Date(date).toLocaleDateString('fa-IR');
+}
+
+/** درصد تخفیف بین قیمت قبلی و قیمت فعلی */
+export function discountPercent(price, oldPrice) {
+  if (!oldPrice || oldPrice <= price) return 0;
+  return Math.round(((oldPrice - price) / oldPrice) * 100);
+}
+---------------------------------
+src/lib/seo.js :
+
+// ============================================================
+// ابزارهای سئو
+// ------------------------------------------------------------
+// نکته‌ی مهم: مدل Product توی بک‌اند فیلد slug نداره (برخلاف
+// BlogPost که داره)، و طبق خواسته‌ی شما بک‌اند رو تغییر ندادیم.
+// برای اینکه لینک محصولات هم برای سئو خوانا باشه (نه فقط یه
+// ObjectId بی‌معنی)، از ترفند "id + اسلاگ توی یه بخش از URL"
+// استفاده کردیم:
+//
+//   /products/64f1a2b3c4d5e6f7a8b9c0d1-rtx-4090-24gb
+//
+// چون ObjectId مونگو همیشه دقیقاً ۲۴ کاراکتر هگزادسیمال هست،
+// می‌تونیم همیشه ۲۴ کاراکتر اول رو جدا کنیم و به بک‌اند بدیم؛
+// بقیه‌ی رشته فقط برای زیبایی/سئوی URL هست و در واقع خونده
+// نمیشه. این یعنی هیچ تغییری توی بک‌اند لازم نیست.
+// ============================================================
+
+const MONGO_ID_LENGTH = 24;
+
+/** تبدیل یه متن فارسی/انگلیسی به اسلاگ URL-friendly */
+export function slugify(text = '') {
+  return text
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    // حروف فارسی، انگلیسی، عدد و خط تیره رو نگه دار، بقیه حذف
+    .replace(/[^\u0600-\u06FFa-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/** ساخت URL کامل محصول (برای Link ها و og:url) */
+export function productUrl(product) {
+  if (!product) return '/products';
+  const slug = slugify(product.name);
+  return `/products/${product.id}${slug ? `-${slug}` : ''}`;
+}
+
+/** استخراج id واقعی محصول از پارامتر URL (که ممکنه id+اسلاگ باشه) */
+export function extractProductId(param) {
+  if (!param) return '';
+  return param.slice(0, MONGO_ID_LENGTH);
+}
+
+/** JSON-LD برای صفحه‌ی محصول (schema.org/Product) — برای نمایش قیمت/موجودی/امتیاز توی نتایج گوگل */
+export function buildProductJsonLd(product, siteUrl) {
+  if (!product) return null;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.name,
+    description: product.desc,
+    image: product.images?.map(img => `${siteUrl}${img}`) || [],
+    brand: { '@type': 'Brand', name: product.brand },
+    sku: product.id,
+    offers: {
+      '@type': 'Offer',
+      priceCurrency: 'IRR',
+      price: product.price,
+      availability: product.stock > 0
+        ? 'https://schema.org/InStock'
+        : 'https://schema.org/OutOfStock',
+      url: `${siteUrl}${productUrl(product)}`,
+    },
+    ...(product.reviewCount > 0 && {
+      aggregateRating: {
+        '@type': 'AggregateRating',
+        ratingValue: product.rating || 0,
+        reviewCount: product.reviewCount,
+      },
+    }),
+  };
+}
+
+/** JSON-LD برای صفحه‌ی مقاله (schema.org/Article) */
+export function buildArticleJsonLd(post, siteUrl) {
+  if (!post) return null;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: post.title,
+    description: post.excerpt,
+    image: post.image ? [`${siteUrl}${post.image}`] : [],
+    datePublished: post.date,
+    dateModified: post.updatedDate || post.date,
+    author: { '@type': 'Person', name: post.author?.name || 'تیم تحریریه' },
+    publisher: {
+      '@type': 'Organization',
+      name: 'technubela',
+      logo: { '@type': 'ImageObject', url: `${siteUrl}/logo.png` },
+    },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': `${siteUrl}/blog/${post.slug}` },
+  };
+}
+
+/** JSON-LD برای مسیر ناوبری (Breadcrumb) — به گوگل کمک می‌کنه ساختار سایت رو بفهمه */
+export function buildBreadcrumbJsonLd(items, siteUrl) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((item, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: item.name,
+      item: `${siteUrl}${item.href}`,
+    })),
+  };
+}
+---------------------------------
+src/.env.local.example :
+
+# آدرس API بک‌اند (همون چیزی که توی پنل ادمین هم استفاده کردیم)
+NEXT_PUBLIC_API_URL=http://localhost:5000/api
+
+# آدرس پایه‌ی بک‌اند برای فایل‌های استاتیک (تصاویر آپلودشده)
+NEXT_PUBLIC_API_BASE=http://localhost:5000
+
+# آدرس خودِ سایت فروشگاه (برای سئو: canonical, sitemap, JSON-LD)
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+---------------------------------
+src/jsconfig.json :
+
+{
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}
+---------------------------------
+src/next.config.mjs :
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // اگه بعداً از next/image به‌جای تگ <img> استفاده کردی، دامنه‌ی
+  // بک‌اند (جایی که عکس‌های محصولات/مقالات سرو میشن) رو اینجا اضافه کن:
+  // images: { remotePatterns: [{ protocol: 'http', hostname: 'localhost', port: '5000' }] },
+};
+
+export default nextConfig;
+---------------------------------
+src/package.json :
+
+{
+  "name": "technubela-storefront",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "tailwindcss": "^4"
+  }
+}
+---------------------------------
+src/postcss.config.mjs :
+
+const config = {
+  plugins: {
+    '@tailwindcss/postcss': {},
+  },
+};
+
+export default config;
